@@ -79,9 +79,9 @@ const SEG3 = 820, BLEND3 = 230;
 const PALS = [
   { name:"아침 초원", sub:"MEADOW", sky:0xa9cfee, gA:0x79b657, gB:0x639e47, far:0x8fb98a, sun:0xfff2d8, sunI:1.2, hemiI:0.75, night:0, coast:0, alpine:0, snow:0 },
   { name:"깊은 숲",   sub:"FOREST", sky:0x9ec9b4, gA:0x4f8a45, gB:0x3d7038, far:0x5d8a66, sun:0xf2ffd8, sunI:1.05, hemiI:0.65, night:0, coast:0, alpine:0, snow:0, mount:0 },
-  { name:"산", sub:"MOUNTAIN", sky:0xa8c8e0, gA:0x6f9a52, gB:0x5d8a48, far:0x7d9b84, sun:0xfff6e0, sunI:1.15, hemiI:0.7, night:0, coast:0, alpine:0, snow:0, mount:1 },
   { name:"바닷가",    sub:"COAST",  sky:0xa5dcf2, gA:0x79b657, gB:0x679e4c, far:0x7fb2c9, sun:0xfff6d8, sunI:1.25, hemiI:0.8, night:0, coast:1, alpine:0, snow:0 },
   { name:"노을 사막", sub:"DESERT", sky:0xf2c48d, gA:0xddba68, gB:0xcaa050, far:0xc98d5a, sun:0xffd9a0, sunI:1.3, hemiI:0.7, night:0.15, coast:0, alpine:0, snow:0, mount:0, desert:1 },
+  { name:"노을 호수", sub:"SUNSET", sky:0xfb9a4e, gA:0x9aa04e, gB:0x7f9448, far:0xc97a4a, sun:0xffb066, sunI:1.25, hemiI:0.55, night:0.25, coast:0, alpine:0, snow:0 },
   { name:"눈 내리는 마을", sub:"SNOW", sky:0xcfdde8, gA:0xf0f5f9, gB:0xdfe9f1, far:0xb9cbd8, sun:0xeef4ff, sunI:1.0, hemiI:0.8, night:0, coast:0, alpine:0, snow:0.8 },
   { name:"설산", sub:"ALPINE", sky:0xd7e6f2, gA:0xeef3f7, gB:0xd3dee8, far:0xa9bfd2, sun:0xf4f8ff, sunI:1.15, hemiI:0.85, night:0, coast:0, alpine:1, snow:1 },
   { name:"밤하늘 아래", sub:"NIGHT", sky:0x0d1626, gA:0x274434, gB:0x1f382a, far:0x1c2b3a, sun:0x93b8ff, sunI:0.22, hemiI:0.22, night:1, coast:0, alpine:0, snow:0 },
@@ -139,7 +139,18 @@ function groundH(x, z){
     const sink = smooth(clamp((sd-16)/46, 0, 1));
     h = lerp(h, e - 2.6, cf * sink * (1 - tt*0.4));
   }
+  const bz = bridgeZoneAt(x); // 교량 구간은 아래가 물이 되게 푹 꺼진다
+  if(bz){
+    const w = smooth(Math.min(clamp((x - bz[0])/7, 0, 1), clamp((bz[1] - x)/7, 0, 1)));
+    if(w > 0) h = lerp(h, Math.min(h, e - 8), w);
+  }
   return h;
+}
+function bridgeZoneAt(x){
+  const ci = Math.floor(x/CHUNK);
+  if(biomeAt3(ci*CHUNK + CHUNK/2).sub !== 'COAST') return null;
+  if(hash(ci*13.73) >= 0.5) return null;
+  return [ci*CHUNK + 55, ci*CHUNK + 205];
 }
 
 /* ================= renderer / scene ================= */
@@ -476,6 +487,12 @@ const sleeperMat = new THREE.MeshStandardMaterial({ color:0x4c3a28, roughness:1 
 const railGeom = new THREE.BoxGeometry(0.1, 0.18, 7);
 const railMat = new THREE.MeshStandardMaterial({ color:0xb9c1c9, roughness:0.32, metalness:0.85 });
 const waterMat = new THREE.MeshStandardMaterial({ color:0x2f8fc4, roughness:0.22, metalness:0.1, transparent:true, opacity:0.92 });
+const deckMat = new THREE.MeshStandardMaterial({ color:0x9aa0a4, roughness:0.9 });
+const deckGeom = new THREE.BoxGeometry(7.4, 0.7, 6.6);
+const pierGeom = new THREE.CylinderGeometry(0.85, 1.05, 1, 10);
+const beamGeom = new THREE.BoxGeometry(5.4, 0.5, 1.3);
+const rail2Geom = new THREE.BoxGeometry(0.09, 0.85, 6.6);
+SHARED_GEO.add(deckGeom); SHARED_GEO.add(pierGeom); SHARED_GEO.add(beamGeom); SHARED_GEO.add(rail2Geom);
 const _dummy = new THREE.Object3D();
 const _tp = new THREE.Vector3(), _ta = new THREE.Vector3();
 
@@ -484,6 +501,8 @@ function buildChunk(ci){
   const centerX = ci*CHUNK + CHUNK/2;
   const latC = latAt(centerX);
   srand(9000 + ci*131);
+  const bName = biomeAt3(centerX).sub;
+  const bz = bName==='COAST'? bridgeZoneAt(ci*CHUNK + 1) : null;
 
   // 지형
   const tg = new THREE.PlaneGeometry(CHUNK, 470, 64, 52);
@@ -523,7 +542,8 @@ function buildChunk(ci){
     const ahead = pathPoint(s+2, _ta);
     const dx = ahead.x-_tp.x, dz = ahead.z-_tp.z, il = 1/Math.hypot(dx,dz);
     const px = -dz*il, pz = dx*il;
-    bPos.push(_tp.x+px*3.6, _tp.y+0.07, _tp.z+pz*3.6, _tp.x-px*3.6, _tp.y+0.07, _tp.z-pz*3.6);
+    const by = _tp.y + 0.07 - (bz && s > bz[0]-2 && s < bz[1]+2 ? 1.5 : 0); // 교량 구간 자갈은 다리 아래로 숨김
+    bPos.push(_tp.x+px*3.6, by, _tp.z+pz*3.6, _tp.x-px*3.6, by, _tp.z-pz*3.6);
     bUv.push(0, s/6, 1, s/6);
     if(i<steps){ const a=i*2; bIdx.push(a, a+1, a+2, a+1, a+3, a+2); }
   }
@@ -574,26 +594,30 @@ function buildChunk(ci){
     pathPoint(s, _tp); pathPoint(s+2, _ta);
     const dx=_ta.x-_tp.x, dz=_ta.z-_tp.z, il=1/Math.hypot(dx,dz);
     const px=-dz*il, pz=dx*il;
-    _dummy.position.set(_tp.x - px*9.5, _tp.y - 0.1, _tp.z - pz*9.5);
-    _dummy.lookAt(_ta.x - px*9.5, _ta.y - 0.1, _ta.z - pz*9.5);
-    _dummy.rotation.x = 0; _dummy.rotation.z = 0;
+    if(bz && s > bz[0]-4 && s < bz[1]+4){ // 교량 위에는 전신주 없음
+      _dummy.position.set(0, -999, 0); _dummy.rotation.set(0,0,0); _dummy.scale.set(0.001, 0.001, 0.001);
+    } else {
+      _dummy.position.set(_tp.x - px*9.5, _tp.y - 0.1, _tp.z - pz*9.5);
+      _dummy.lookAt(_ta.x - px*9.5, _ta.y - 0.1, _ta.z - pz*9.5);
+      _dummy.rotation.x = 0; _dummy.rotation.z = 0;
+    }
     _dummy.updateMatrix();
     poles.setMatrixAt(i, _dummy.matrix);
   }
+  _dummy.rotation.set(0,0,0); _dummy.scale.set(1,1,1);
   poles.castShadow = true; poles.frustumCulled = false;
   group.add(poles);
 
   // 나무/바위 (인스턴싱)
-  const bName = biomeAt3(centerX).sub;
   const plan = { pine:0, pineSnow:0, round:0, palm:0, cactus:0, rock:0, bush:0, bale:0, snowman:0 };
-  if(bName==='MEADOW'){ plan.round=34; plan.pine=10; plan.rock=3; plan.bush=14; plan.bale=5; }
-  else if(bName==='FOREST'){ plan.pine=64; plan.round=10; plan.rock=3; plan.bush=14; }
-  else if(bName==='MOUNTAIN'){ plan.pine=32; plan.round=8; plan.rock=14; plan.bush=6; }
-  else if(bName==='COAST'){ plan.palm=22; plan.round=7; plan.rock=2; plan.bush=6; }
-  else if(bName==='DESERT'){ plan.cactus=20; plan.rock=12; }
-  else if(bName==='SNOW'){ plan.pineSnow=42; plan.rock=2; plan.snowman=2; }
-  else if(bName==='ALPINE'){ plan.pineSnow=22; plan.rock=20; }
-  else if(bName==='NIGHT'){ plan.pine=30; plan.round=6; }
+  if(bName==='MEADOW'){ plan.round=40; plan.pine=12; plan.rock=3; plan.bush=18; plan.bale=5; }
+  else if(bName==='FOREST'){ plan.pine=112; plan.round=14; plan.rock=3; plan.bush=20; }
+  else if(bName==='COAST'){ plan.palm=26; plan.round=7; plan.rock=2; plan.bush=6; }
+  else if(bName==='DESERT'){ plan.cactus=24; plan.rock=12; }
+  else if(bName==='SUNSET'){ plan.round=26; plan.pine=6; plan.bush=10; plan.bale=4; plan.rock=2; }
+  else if(bName==='SNOW'){ plan.pineSnow=48; plan.rock=2; plan.snowman=3; }
+  else if(bName==='ALPINE'){ plan.pineSnow=26; plan.rock=24; }
+  else if(bName==='NIGHT'){ plan.pine=36; plan.round=6; }
   for(const type of Object.keys(plan)){
     const cnt = plan[type];
     if(!cnt) continue;
@@ -614,7 +638,8 @@ function buildChunk(ci){
       const distS = Math.abs(z - latAt(x));
       if(bName==='COAST' && sideS>0 && distS>26 && type!=='rock') continue;   // 바다 쪽엔 나무 없음
       if(bName==='COAST' && sideS>0 && type==='palm' && distS>30) continue;
-      const sc = 0.8 + rnd()*0.75;
+      if(bz && x > bz[0]-6 && x < bz[1]+6 && distS > 10) continue;   // 교량 구간 물 위엔 안 심음
+      const sc = (0.8 + rnd()*0.75) * (bName==='FOREST'? 1.18 : 1);
       _dummy.position.set(x, groundH(x,z)-0.08, z);
       _dummy.rotation.set(0, rnd()*Math.PI*2, 0);
       _dummy.scale.set(sc, sc*(0.9+rnd()*0.25), sc);
@@ -629,13 +654,14 @@ function buildChunk(ci){
   _dummy.rotation.set(0,0,0); _dummy.scale.set(1,1,1);
 
   // 집 (눈 마을·밤에는 마을처럼 모여서)
-  const nH = bName==='MEADOW'?2 : bName==='SNOW'?5 : bName==='NIGHT'?4 : bName==='COAST'?1 : 0;
+  const nH = bName==='MEADOW'?2 : bName==='SNOW'?9 : bName==='NIGHT'?5 : bName==='SUNSET'?2 : bName==='COAST'?1 : 0;
   const vX = ci*CHUNK + 60 + rnd()*140, vSide = rnd()<0.5? -1: 1;
   for(let i=0;i<nH;i++){
     const clustered = bName==='SNOW' || bName==='NIGHT';
-    const hx = clustered? vX + (rnd()-0.5)*52 : ci*CHUNK + 30 + rnd()*(CHUNK-60);
+    const hx = clustered? vX + (i - (nH-1)/2)*12 + (rnd()-0.5)*5 : ci*CHUNK + 30 + rnd()*(CHUNK-60);
+    if(bz && hx > bz[0]-8 && hx < bz[1]+8) continue; // 교량 구간엔 집 없음
     const side = clustered? vSide : (rnd()<0.5? -1: 1);
-    const hz = latAt(hx) + side*(clustered? 24 + rnd()*24 : 26 + rnd()*70);
+    const hz = latAt(hx) + side*(clustered? 23 + (i%2)*14 + rnd()*5 : 26 + rnd()*70);
     const house = buildHouse(Math.floor(rnd()*2));
     house.position.set(hx, groundH(hx,hz)-0.05, hz);
     house.rotation.y = (side<0? Math.PI : 0) + (rnd()-0.5)*0.7 + Math.PI/4*0;
@@ -653,8 +679,8 @@ function buildChunk(ci){
     group.add(sig);
   }
 
-  // 초원: 논밭
-  if(bName==='MEADOW'){
+  // 초원·노을: 논밭
+  if(bName==='MEADOW' || bName==='SUNSET'){
     const nF = 1 + Math.floor(rnd()*2);
     for(let i=0;i<nF;i++){
       const fx = ci*CHUNK + 40 + rnd()*(CHUNK-80);
@@ -694,6 +720,7 @@ function buildChunk(ci){
     const nU = 2 + Math.floor(rnd()*3);
     for(let i=0;i<nU;i++){
       const ux = ci*CHUNK + rnd()*CHUNK;
+      if(bz && ux > bz[0]-6 && ux < bz[1]+6) continue;
       const um = new THREE.Mesh(UMB_GEOMS[Math.floor(rnd()*3)], foliageMat);
       const uz = latAt(ux) + 19 + rnd()*8;
       um.position.set(ux, groundH(ux,uz), uz);
@@ -719,8 +746,9 @@ function buildChunk(ci){
 
   // 눈 마을·밤: 가로등
   if(bName==='SNOW' || bName==='NIGHT'){
-    for(let i=0;i<3;i++){
-      const lx = ci*CHUNK + 30 + i*95 + rnd()*30;
+    const nL = bName==='SNOW'? 5 : 3;
+    for(let i=0;i<nL;i++){
+      const lx = ci*CHUNK + 25 + i*(CHUNK-50)/nL + rnd()*10;
       const lSide = (i % 2 === 0)? 1 : -1;
       const lz = latAt(lx) + lSide*7.6;
       const pole = new THREE.Mesh(GEOMS.lamp, foliageMat);
@@ -764,6 +792,22 @@ function buildChunk(ci){
     group.add(lake);
   }
 
+  // 노을: 호수
+  if(bName==='SUNSET' && hash(ci*9.13) < 0.6){
+    const kx = ci*CHUNK + 50 + rnd()*(CHUNK-100);
+    const kSide = rnd()<0.5? -1: 1;
+    const kz = latAt(kx) + kSide*(50 + rnd()*30);
+    const kr = 17 + rnd()*10;
+    const kg = new THREE.CircleGeometry(kr, 18); kg.rotateX(-Math.PI/2);
+    const kp = kg.attributes.position;
+    for(let v=0; v<kp.count; v++) kp.setY(v, groundH(kx + kp.getX(v)*1.5, kz + kp.getZ(v)) + 0.1);
+    kg.computeVertexNormals();
+    const lake = new THREE.Mesh(kg, waterMat);
+    lake.scale.set(1.5, 1, 1);
+    lake.position.set(kx, 0, kz);
+    group.add(lake);
+  }
+
   // 먼 산맥 (맵에 따라 다르게: 사막엔 없고, 산·설산엔 크고 가깝게)
   const rangeP = (bName==='MOUNTAIN'||bName==='ALPINE')? 1 : bName==='DESERT'? 0 : bName==='MEADOW'? 0.35 : bName==='COAST'? 0.4 : bName==='FOREST'? 0.6 : 0.55;
   if(rnd() < rangeP){
@@ -782,14 +826,57 @@ function buildChunk(ci){
     }
   }
 
-  // 바다
+  // 바다 (교량 구간은 물이 양쪽으로)
   const palC = paletteAt3(centerX);
   if(palC.coast > 0.4){
-    const wgeo = new THREE.PlaneGeometry(CHUNK, 210);
+    const wgeo = new THREE.PlaneGeometry(CHUNK, bz? 470 : 210);
     wgeo.rotateX(-Math.PI/2);
     const water = new THREE.Mesh(wgeo, waterMat);
-    water.position.set(centerX, elevAt(centerX)-0.5, latC + 34 + 100);
+    water.position.set(centerX, elevAt(centerX)-0.5, bz? latC : latC + 134);
     group.add(water);
+  }
+
+  // 교량: 다리 상판, 난간, 기둥
+  if(bz){
+    const z0 = bz[0], z1 = bz[1];
+    const nSeg = Math.ceil((z1-z0)/6.5);
+    const deck = new THREE.InstancedMesh(deckGeom, deckMat, nSeg);
+    const rails2 = new THREE.InstancedMesh(rail2Geom, railMat, nSeg*2);
+    for(let i=0;i<nSeg;i++){
+      const s = z0 + i*6.5 + 3.25;
+      pathPoint(s, _tp); pathPoint(s+2, _ta);
+      const dx=_ta.x-_tp.x, dz=_ta.z-_tp.z, il=1/Math.hypot(dx,dz);
+      const px=-dz*il, pz=dx*il;
+      _dummy.position.set(_tp.x, _tp.y - 0.32, _tp.z);
+      _dummy.lookAt(_ta.x, _ta.y - 0.32, _ta.z);
+      _dummy.updateMatrix(); deck.setMatrixAt(i, _dummy.matrix);
+      for(let k=0;k<2;k++){
+        const off = k===0? 2.62 : -2.62;
+        _dummy.position.set(_tp.x+px*off, _tp.y + 0.98, _tp.z+pz*off);
+        _dummy.lookAt(_ta.x+px*off, _ta.y + 0.98, _ta.z+pz*off);
+        _dummy.updateMatrix(); rails2.setMatrixAt(i*2+k, _dummy.matrix);
+      }
+    }
+    deck.frustumCulled = false; rails2.frustumCulled = false;
+    deck.castShadow = true;
+    group.add(deck); group.add(rails2);
+    const nPr = Math.floor((z1-z0)/21);
+    const piers = new THREE.InstancedMesh(pierGeom, deckMat, nPr);
+    const beams = new THREE.InstancedMesh(beamGeom, deckMat, nPr);
+    for(let i=0;i<nPr;i++){
+      const s = z0 + 10 + i*21;
+      pathPoint(s, _tp); pathPoint(s+2, _ta);
+      _dummy.position.set(_tp.x, _tp.y - 5.05, _tp.z);
+      _dummy.rotation.set(0,0,0); _dummy.scale.set(1, 8.9, 1);
+      _dummy.updateMatrix(); piers.setMatrixAt(i, _dummy.matrix);
+      _dummy.position.set(_tp.x, _tp.y - 0.85, _tp.z);
+      _dummy.scale.set(1,1,1);
+      _dummy.lookAt(_ta.x, _ta.y - 0.85, _ta.z);
+      _dummy.updateMatrix(); beams.setMatrixAt(i, _dummy.matrix);
+    }
+    piers.frustumCulled = false; beams.frustumCulled = false;
+    group.add(piers); group.add(beams);
+    _dummy.rotation.set(0,0,0); _dummy.scale.set(1,1,1);
   }
 
   scene.add(group);
@@ -1024,7 +1111,7 @@ document.getElementById('camBtn').addEventListener('click', e=>{
   e.target.textContent = "카메라: " + CAMS[camMode];
 });
 /* 맵 선택 버튼 */
-const MAP_LABELS = ["초원", "숲", "산", "바다", "사막", "눈 마을", "설산", "밤"];
+const MAP_LABELS = ["초원", "숲", "바다", "사막", "노을", "눈 마을", "설산", "밤"];
 const mapChips = [];
 {
   const bar = document.getElementById('mapbar');
