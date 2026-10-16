@@ -81,7 +81,7 @@ const PALS = [
   { name:"깊은 숲",   sub:"FOREST", sky:0x9ec9b4, gA:0x4f8a45, gB:0x3d7038, far:0x5d8a66, sun:0xf2ffd8, sunI:1.05, hemiI:0.65, night:0, coast:0, alpine:0, snow:0, mount:0 },
   { name:"산", sub:"MOUNTAIN", sky:0xa8c8e0, gA:0x6f9a52, gB:0x5d8a48, far:0x7d9b84, sun:0xfff6e0, sunI:1.15, hemiI:0.7, night:0, coast:0, alpine:0, snow:0, mount:1 },
   { name:"바닷가",    sub:"COAST",  sky:0xa5dcf2, gA:0x79b657, gB:0x679e4c, far:0x7fb2c9, sun:0xfff6d8, sunI:1.25, hemiI:0.8, night:0, coast:1, alpine:0, snow:0 },
-  { name:"노을 사막", sub:"DESERT", sky:0xf2c48d, gA:0xddba68, gB:0xcaa050, far:0xc98d5a, sun:0xffd9a0, sunI:1.3, hemiI:0.7, night:0.15, coast:0, alpine:0, snow:0 },
+  { name:"노을 사막", sub:"DESERT", sky:0xf2c48d, gA:0xddba68, gB:0xcaa050, far:0xc98d5a, sun:0xffd9a0, sunI:1.3, hemiI:0.7, night:0.15, coast:0, alpine:0, snow:0, mount:0, desert:1 },
   { name:"눈 내리는 마을", sub:"SNOW", sky:0xcfdde8, gA:0xf0f5f9, gB:0xdfe9f1, far:0xb9cbd8, sun:0xeef4ff, sunI:1.0, hemiI:0.8, night:0, coast:0, alpine:0, snow:0.8 },
   { name:"설산", sub:"ALPINE", sky:0xd7e6f2, gA:0xeef3f7, gB:0xd3dee8, far:0xa9bfd2, sun:0xf4f8ff, sunI:1.15, hemiI:0.85, night:0, coast:0, alpine:1, snow:1 },
   { name:"밤하늘 아래", sub:"NIGHT", sky:0x0d1626, gA:0x274434, gB:0x1f382a, far:0x1c2b3a, sun:0x93b8ff, sunI:0.22, hemiI:0.22, night:1, coast:0, alpine:0, snow:0 },
@@ -98,7 +98,7 @@ function paletteAt3(s){
   const t = smooth(clamp((into-(SEG3-BLEND3))/BLEND3, 0, 1));
   const o = { name:cur.name, sub:cur.sub, sky:new THREE.Color(), gA:new THREE.Color(), gB:new THREE.Color(), far:new THREE.Color(), sun:new THREE.Color(),
     sunI:lerp(cur.sunI,nxt.sunI,t), hemiI:lerp(cur.hemiI,nxt.hemiI,t), night:lerp(cur.night,nxt.night,t), coast:lerp(cur.coast,nxt.coast,t),
-    alpine:lerp(cur.alpine,nxt.alpine,t), snow:lerp(cur.snow,nxt.snow,t), mount:lerp(cur.mount||0,nxt.mount||0,t) };
+    alpine:lerp(cur.alpine,nxt.alpine,t), snow:lerp(cur.snow,nxt.snow,t), mount:lerp(cur.mount||0,nxt.mount||0,t), desert:lerp(cur.desert||0,nxt.desert||0,t) };
   lerpCol(o.sky, cur.sky, nxt.sky, t); lerpCol(o.gA, cur.gA, nxt.gA, t);
   lerpCol(o.gB, cur.gB, nxt.gB, t); lerpCol(o.far, cur.far, nxt.far, t); lerpCol(o.sun, cur.sun, nxt.sun, t);
   return o;
@@ -131,7 +131,9 @@ function groundH(x, z){
   const sd = z - lz, d = Math.abs(sd);
   const t = clamp((d-16)/90, 0, 1), tt = t*t;
   const rugged = 1 + palG.alpine*1.9 + palG.mount*1.25; // 산·설산은 지형이 험하게
-  let h = e + (Math.sin(x*0.011+z*0.017)*2.2 + Math.sin(x*0.004-z*0.006+2)*4.5 + Math.sin((x+z)*0.0016)*7) * tt * rugged;
+  const roll = (Math.sin(x*0.011+z*0.017)*2.2 + Math.sin(x*0.004-z*0.006+2)*4.5 + Math.sin((x+z)*0.0016)*7) * tt * rugged;
+  const dune = (Math.sin(x*0.006+z*0.0045)*3.2 + Math.sin((x-z)*0.0022+1)*5.5) * tt * 1.15; // 사막은 긴 파장의 모래언덕
+  let h = e + lerp(roll, dune, palG.desert);
   const cf = palG.coast;
   if(cf > 0.03 && sd > 0){ // 바닷가 쪽은 해변처럼 낮아짐
     const sink = smooth(clamp((sd-16)/46, 0, 1));
@@ -289,7 +291,7 @@ function mergeGeoms(list){
   out.setAttribute('color', new THREE.BufferAttribute(col,3));
   return out;
 }
-const foliageMat = new THREE.MeshStandardMaterial({ vertexColors:true, roughness:0.95, metalness:0 });
+const foliageMat = new THREE.MeshStandardMaterial({ vertexColors:true, roughness:0.95, metalness:0, side: THREE.DoubleSide });
 function pineGeom(snow){
   const parts = [
     colored(xform(new THREE.CylinderGeometry(0.15,0.22,1.3,6), 0,0.65,0), 0x5b4632),
@@ -353,9 +355,69 @@ function poleGeom(){
     colored(xform(new THREE.BoxGeometry(1.9,0.12,0.12), 0,6.1,0), 0x4c3a28),
   ]);
 }
-const GEOMS = { pine: pineGeom(false), pineSnow: pineGeom(true), round: roundGeom(), palm: palmGeom(), cactus: cactusGeom(), rock: rockGeom(), bush: bushGeom() };
+function lighthouseGeom(){
+  return mergeGeoms([
+    colored(xform(new THREE.CylinderGeometry(1.7,2.1,7.6,10), 0,3.8,0), 0xf2efe8),
+    colored(xform(new THREE.CylinderGeometry(1.86,1.95,1.7,10), 0,2.6,0), 0xc23b2a),
+    colored(xform(new THREE.CylinderGeometry(1.62,1.72,1.6,10), 0,5.6,0), 0xc23b2a),
+    colored(xform(new THREE.CylinderGeometry(1.15,1.15,1.5,8), 0,8.3,0), 0x2c3844),
+    colored(xform(new THREE.SphereGeometry(0.62,8,6), 0,8.3,0), 0xffe2a0),
+    colored(xform(new THREE.ConeGeometry(1.6,1.3,8), 0,9.7,0), 0x37434e),
+  ]);
+}
+function boatGeom(){
+  const sailShape = new THREE.Shape();
+  sailShape.moveTo(0,0); sailShape.lineTo(0,3.6); sailShape.lineTo(2.3,0.3); sailShape.lineTo(0,0);
+  return mergeGeoms([
+    colored(xform(new THREE.BoxGeometry(3.4,0.8,1.3), 0,0.4,0), 0x7a4a2e),
+    colored(xform(new THREE.BoxGeometry(3.8,0.28,1.5), 0,0.9,0), 0x9a6a42),
+    colored(xform(new THREE.CylinderGeometry(0.05,0.05,3.9,5), 0,2.6,0), 0x5b4632),
+    colored(xform(new THREE.ShapeGeometry(sailShape), 0.06,1.05,0), 0xf5f2e8),
+  ]);
+}
+function snowmanGeom(){
+  return mergeGeoms([
+    colored(xform(new THREE.SphereGeometry(0.85,10,8), 0,0.8,0), 0xf7fafc),
+    colored(xform(new THREE.SphereGeometry(0.58,9,7), 0,2.0,0), 0xf7fafc),
+    colored(xform(new THREE.ConeGeometry(0.13,0.6,6), 0,2.0,0.62, Math.PI/2,0,0), 0xe07b2a),
+    colored(xform(new THREE.SphereGeometry(0.09,6,5), 0.18,2.18,0.52), 0x222222),
+    colored(xform(new THREE.SphereGeometry(0.09,6,5), -0.18,2.18,0.52), 0x222222),
+  ]);
+}
+function baleGeom(){
+  return mergeGeoms([ colored(xform(new THREE.CylinderGeometry(0.95,0.95,1.35,10), 0,0.95,0, 0,0,Math.PI/2), 0xd9b45c) ]);
+}
+function signalGeom(){
+  return mergeGeoms([
+    colored(xform(new THREE.CylinderGeometry(0.07,0.09,3.4,6), 0,1.7,0), 0x3a3f45),
+    colored(xform(new THREE.BoxGeometry(0.55,1.15,0.3), 0,3.6,0), 0x22262b),
+    colored(xform(new THREE.SphereGeometry(0.13,6,5), 0,3.85,0.17), 0xd43a2a),
+    colored(xform(new THREE.SphereGeometry(0.13,6,5), 0,3.35,0.17), 0x37b24d),
+  ]);
+}
+function lampGeom(){
+  return mergeGeoms([
+    colored(xform(new THREE.CylinderGeometry(0.06,0.08,3.6,6), 0,1.8,0), 0x33383e),
+    colored(xform(new THREE.BoxGeometry(0.12,0.36,0.12), 0,3.55,0), 0x33383e),
+  ]);
+}
+function umbrellaGeom(hex){
+  return mergeGeoms([
+    colored(xform(new THREE.CylinderGeometry(0.05,0.05,2.3,5), 0,1.15,0), 0xe8e4da),
+    colored(xform(new THREE.ConeGeometry(1.7,0.75,8), 0,2.35,0), hex),
+  ]);
+}
+const UMB_GEOMS = [umbrellaGeom(0xe2574c), umbrellaGeom(0x3e7dc4), umbrellaGeom(0xf2b13c)];
+const GEOMS = { pine: pineGeom(false), pineSnow: pineGeom(true), round: roundGeom(), palm: palmGeom(), cactus: cactusGeom(), rock: rockGeom(), bush: bushGeom(),
+  lighthouse: lighthouseGeom(), boat: boatGeom(), snowman: snowmanGeom(), bale: baleGeom(), signal: signalGeom(), lamp: lampGeom() };
 const poleGeomInst = poleGeom();
-const SHARED_GEO = new Set([...Object.values(GEOMS), poleGeomInst]);
+const SHARED_GEO = new Set([...Object.values(GEOMS), poleGeomInst, ...UMB_GEOMS]);
+const mesaMat = new THREE.MeshStandardMaterial({ color:0xbe8856, roughness:1, flatShading:true });
+const iceMat = new THREE.MeshStandardMaterial({ color:0xcfe4ee, roughness:0.15, metalness:0.1 });
+const fieldMats = [0xd9b45c, 0x86a83e, 0x8a6a48].map(c=> new THREE.MeshStandardMaterial({ color:c, roughness:1 }));
+const lampMat = new THREE.MeshBasicMaterial({ color:0x2b3e4f });
+const lampGlowGeom = new THREE.SphereGeometry(0.32, 8, 6);
+SHARED_GEO.add(lampGlowGeom);
 
 /* ================= houses ================= */
 const houseWinMat = new THREE.MeshBasicMaterial({ color: 0x2b3e4f });
@@ -505,33 +567,42 @@ function buildChunk(ci){
 
   // 나무/바위 (인스턴싱)
   const bName = biomeAt3(centerX).sub;
-  const plan = { pine:0, pineSnow:0, round:0, palm:0, cactus:0, rock:0, bush:0 };
-  if(bName==='MEADOW'){ plan.round=34; plan.pine=10; plan.rock=3; plan.bush=14; }
-  else if(bName==='FOREST'){ plan.pine=56; plan.round=10; plan.rock=3; plan.bush=10; }
+  const plan = { pine:0, pineSnow:0, round:0, palm:0, cactus:0, rock:0, bush:0, bale:0, snowman:0 };
+  if(bName==='MEADOW'){ plan.round=34; plan.pine=10; plan.rock=3; plan.bush=14; plan.bale=5; }
+  else if(bName==='FOREST'){ plan.pine=64; plan.round=10; plan.rock=3; plan.bush=14; }
   else if(bName==='MOUNTAIN'){ plan.pine=32; plan.round=8; plan.rock=14; plan.bush=6; }
   else if(bName==='COAST'){ plan.palm=22; plan.round=7; plan.rock=2; plan.bush=6; }
   else if(bName==='DESERT'){ plan.cactus=20; plan.rock=12; }
-  else if(bName==='SNOW'){ plan.pineSnow=42; plan.rock=2; }
+  else if(bName==='SNOW'){ plan.pineSnow=42; plan.rock=2; plan.snowman=2; }
   else if(bName==='ALPINE'){ plan.pineSnow=22; plan.rock=20; }
   else if(bName==='NIGHT'){ plan.pine=30; plan.round=6; }
   for(const type of Object.keys(plan)){
     const cnt = plan[type];
     if(!cnt) continue;
     const inst = new THREE.InstancedMesh(GEOMS[type], foliageMat, cnt);
-    let placed = 0, guard = 0;
+    let placed = 0, guard = 0, lastX = null, lastZ = 0;
     while(placed < cnt && guard++ < cnt*30){
-      const x = ci*CHUNK + rnd()*CHUNK;
-      const side = rnd()<0.5? -1: 1;
-      const dist = 15 + rnd()*185;
-      const z = latAt(x) + side*dist;
-      if(bName==='COAST' && side>0 && dist>26 && type!=='rock') continue;   // 바다 쪽엔 나무 없음
-      if(bName==='COAST' && side>0 && type==='palm' && dist>30) continue;
+      let x, z;
+      if(lastX !== null && rnd() < 0.45){ // 뭉쳐서 자라는 느낌으로
+        x = lastX + (rnd()-0.5)*18; z = lastZ + (rnd()-0.5)*18;
+        if(Math.abs(z - latAt(x)) < 13) continue;
+      } else { // 가까운 쪽에 더 많이
+        x = ci*CHUNK + rnd()*CHUNK;
+        const side = rnd()<0.5? -1: 1;
+        const dist = 13 + Math.pow(rnd(), 1.5)*168;
+        z = latAt(x) + side*dist;
+      }
+      const sideS = Math.sign(z - latAt(x)) || 1;
+      const distS = Math.abs(z - latAt(x));
+      if(bName==='COAST' && sideS>0 && distS>26 && type!=='rock') continue;   // 바다 쪽엔 나무 없음
+      if(bName==='COAST' && sideS>0 && type==='palm' && distS>30) continue;
       const sc = 0.8 + rnd()*0.75;
       _dummy.position.set(x, groundH(x,z)-0.08, z);
       _dummy.rotation.set(0, rnd()*Math.PI*2, 0);
       _dummy.scale.set(sc, sc*(0.9+rnd()*0.25), sc);
       _dummy.updateMatrix();
       inst.setMatrixAt(placed++, _dummy.matrix);
+      lastX = x; lastZ = z;
     }
     inst.count = placed;
     inst.castShadow = true; inst.frustumCulled = false;
@@ -539,17 +610,140 @@ function buildChunk(ci){
   }
   _dummy.rotation.set(0,0,0); _dummy.scale.set(1,1,1);
 
-  // 집
-  const nH = bName==='MEADOW'?2 : bName==='SNOW'?2 : bName==='NIGHT'?3 : bName==='COAST'?1 : 0;
+  // 집 (눈 마을·밤에는 마을처럼 모여서)
+  const nH = bName==='MEADOW'?2 : bName==='SNOW'?5 : bName==='NIGHT'?4 : bName==='COAST'?1 : 0;
+  const vX = ci*CHUNK + 60 + rnd()*140, vSide = rnd()<0.5? -1: 1;
   for(let i=0;i<nH;i++){
-    const hx = ci*CHUNK + 30 + rnd()*(CHUNK-60);
-    const side = rnd()<0.5? -1: 1;
-    const hz = latAt(hx) + side*(26 + rnd()*70);
+    const clustered = bName==='SNOW' || bName==='NIGHT';
+    const hx = clustered? vX + (rnd()-0.5)*52 : ci*CHUNK + 30 + rnd()*(CHUNK-60);
+    const side = clustered? vSide : (rnd()<0.5? -1: 1);
+    const hz = latAt(hx) + side*(clustered? 24 + rnd()*24 : 26 + rnd()*70);
     const house = buildHouse(Math.floor(rnd()*2));
     house.position.set(hx, groundH(hx,hz)-0.05, hz);
     house.rotation.y = (side<0? Math.PI : 0) + (rnd()-0.5)*0.7 + Math.PI/4*0;
     house.rotation.y += Math.atan2(-(latAt(hx+4)-latAt(hx-4)), 8)*0; // 선로 방향 대략 맞춤 (미세)
     group.add(house);
+  }
+
+  // 신호기 (가끔)
+  if(hash(ci*3.17) < 0.6){
+    const sx = ci*CHUNK + CHUNK*0.5;
+    const sSide = (ci % 2 === 0)? 1 : -1;
+    const sig = new THREE.Mesh(GEOMS.signal, foliageMat);
+    sig.position.set(sx, elevAt(sx) - 0.05, latAt(sx) + sSide*6.4);
+    sig.castShadow = true;
+    group.add(sig);
+  }
+
+  // 초원: 논밭
+  if(bName==='MEADOW'){
+    const nF = 1 + Math.floor(rnd()*2);
+    for(let i=0;i<nF;i++){
+      const fx = ci*CHUNK + 40 + rnd()*(CHUNK-80);
+      const fSide = rnd()<0.5? -1: 1;
+      const fz = latAt(fx) + fSide*(36 + rnd()*26);
+      const fg = new THREE.PlaneGeometry(48, 30, 6, 4); fg.rotateX(-Math.PI/2);
+      const fp = fg.attributes.position;
+      for(let v=0; v<fp.count; v++) fp.setY(v, groundH(fx + fp.getX(v), fz + fp.getZ(v)) + 0.07);
+      fg.computeVertexNormals();
+      const field = new THREE.Mesh(fg, fieldMats[Math.floor(rnd()*fieldMats.length)]);
+      field.position.set(fx, 0, fz); field.receiveShadow = true;
+      group.add(field);
+    }
+  }
+
+  // 바닷가: 등대, 배, 파라솔
+  if(bName==='COAST'){
+    if(hash(ci*7.31) < 0.6){
+      const lx = ci*CHUNK + 60 + rnd()*(CHUNK-120);
+      const lz = latAt(lx) + 44 + rnd()*20;
+      const lh = new THREE.Mesh(GEOMS.lighthouse, foliageMat);
+      const lsc = 1.7 + rnd()*0.5;
+      lh.scale.set(lsc, lsc, lsc);
+      lh.position.set(lx, Math.max(groundH(lx,lz), elevAt(lx)-0.4) - 0.2, lz);
+      lh.castShadow = true;
+      group.add(lh);
+    }
+    const nB = 1 + Math.floor(rnd()*2);
+    for(let i=0;i<nB;i++){
+      const bx = ci*CHUNK + rnd()*CHUNK;
+      const boat = new THREE.Mesh(GEOMS.boat, foliageMat);
+      boat.position.set(bx, elevAt(bx)-0.3, latAt(bx) + 62 + rnd()*70);
+      boat.rotation.y = rnd()*Math.PI*2;
+      const bsc = 1.1 + rnd()*0.7; boat.scale.set(bsc, bsc, bsc);
+      group.add(boat);
+    }
+    const nU = 2 + Math.floor(rnd()*3);
+    for(let i=0;i<nU;i++){
+      const ux = ci*CHUNK + rnd()*CHUNK;
+      const um = new THREE.Mesh(UMB_GEOMS[Math.floor(rnd()*3)], foliageMat);
+      const uz = latAt(ux) + 19 + rnd()*8;
+      um.position.set(ux, groundH(ux,uz), uz);
+      um.rotation.y = rnd()*Math.PI;
+      group.add(um);
+    }
+  }
+
+  // 사막: 메사 (평평한 바위산)
+  if(bName==='DESERT'){
+    const nMs = 1 + Math.floor(rnd()*2);
+    for(let i=0;i<nMs;i++){
+      const mx2 = ci*CHUNK + rnd()*CHUNK;
+      const mSide = rnd()<0.5? -1: 1;
+      const mz2 = latAt(mx2) + mSide*(120 + rnd()*110);
+      const mesa = new THREE.Mesh(new THREE.CylinderGeometry(13+rnd()*10, 19+rnd()*12, 15+rnd()*9, 7), mesaMat);
+      mesa.position.set(mx2, groundH(mx2,mz2)+4, mz2);
+      mesa.rotation.y = rnd()*Math.PI;
+      mesa.castShadow = true;
+      group.add(mesa);
+    }
+  }
+
+  // 눈 마을·밤: 가로등
+  if(bName==='SNOW' || bName==='NIGHT'){
+    for(let i=0;i<3;i++){
+      const lx = ci*CHUNK + 30 + i*95 + rnd()*30;
+      const lSide = (i % 2 === 0)? 1 : -1;
+      const lz = latAt(lx) + lSide*7.6;
+      const pole = new THREE.Mesh(GEOMS.lamp, foliageMat);
+      pole.position.set(lx, elevAt(lx)-0.05, lz);
+      group.add(pole);
+      const glow = new THREE.Mesh(lampGlowGeom, lampMat);
+      glow.position.set(lx, elevAt(lx)+3.35, lz);
+      group.add(glow);
+    }
+  }
+
+  // 산·설산: 선로 옆 바위 절벽
+  if(bName==='MOUNTAIN' || bName==='ALPINE'){
+    const nC = 2 + Math.floor(rnd()*2);
+    for(let i=0;i<nC;i++){
+      const cx2 = ci*CHUNK + rnd()*CHUNK;
+      const cSide = rnd()<0.5? -1: 1;
+      const cz2 = latAt(cx2) + cSide*(20 + rnd()*22);
+      const cliff = new THREE.Mesh(GEOMS.rock, foliageMat);
+      const csc = 3.2 + rnd()*2.6;
+      cliff.scale.set(csc, csc*0.85, csc);
+      cliff.position.set(cx2, groundH(cx2,cz2)-0.3, cz2);
+      cliff.rotation.y = rnd()*Math.PI*2;
+      cliff.castShadow = true;
+      group.add(cliff);
+    }
+  }
+
+  // 설산: 얼음 호수
+  if(bName==='ALPINE' && hash(ci*5.7) < 0.55){
+    const kx = ci*CHUNK + 50 + rnd()*(CHUNK-100);
+    const kSide = rnd()<0.5? -1: 1;
+    const kz = latAt(kx) + kSide*(52 + rnd()*36);
+    const kr = 15 + rnd()*11;
+    const kg = new THREE.CircleGeometry(kr, 16); kg.rotateX(-Math.PI/2);
+    const kp = kg.attributes.position;
+    for(let v=0; v<kp.count; v++) kp.setY(v, groundH(kx + kp.getX(v), kz + kp.getZ(v)) + 0.12);
+    kg.computeVertexNormals();
+    const lake = new THREE.Mesh(kg, iceMat);
+    lake.position.set(kx, 0, kz);
+    group.add(lake);
   }
 
   // 먼 산 (산·설산에서는 크고 가깝게)
@@ -559,7 +753,7 @@ function buildChunk(ci){
     for(let i=0;i<nM;i++){
       const mx = ci*CHUNK + rnd()*CHUNK;
       const side = rnd()<0.5? -1: 1;
-      const mz = latAt(mx) + side*(isAlp? 235 + rnd()*100 : 310 + rnd()*130);
+      const mz = latAt(mx) + side*(bName==='ALPINE'? 195 + rnd()*85 : isAlp? 235 + rnd()*100 : 310 + rnd()*130);
       const m = new THREE.Mesh(new THREE.ConeGeometry(isAlp? 150+rnd()*120 : 90+rnd()*90, isAlp? 135+rnd()*100 : 80+rnd()*80, 5), mountainMat);
       m.position.set(mx, -6, mz);
       m.rotation.y = rnd()*Math.PI;
@@ -699,6 +893,11 @@ const starGeo = new THREE.BufferGeometry();
 const starMat = new THREE.PointsMaterial({ color:0xffffff, size:1.7, sizeAttenuation:false, transparent:true, opacity:0, fog:false, depthWrite:false });
 const stars = new THREE.Points(starGeo, starMat);
 scene.add(stars);
+const moonMat = new THREE.MeshBasicMaterial({ color:0xf4f7ff, transparent:true, opacity:0, fog:false, depthWrite:false });
+const moon = new THREE.Mesh(new THREE.CircleGeometry(55, 24), moonMat);
+moon.frustumCulled = false;
+scene.add(moon);
+const _moonDir = new THREE.Vector3(420, 330, -1150);
 const cloudMat = new THREE.MeshStandardMaterial({ color:0xffffff, roughness:1, transparent:true, opacity:0.88 });
 const cloudGroup = new THREE.Group();
 {
@@ -923,11 +1122,14 @@ function frame(now){
   sun.position.set(tp.x + 190, tp.y + 260, tp.z + 130);
   sun.target.position.copy(tp);
   starMat.opacity = pal.night * 0.95;
+  moonMat.opacity = pal.night * 0.95;
+  moon.position.copy(camera.position).add(_moonDir);
+  moon.lookAt(camera.position);
   snowMat.opacity = pal.snow * 0.95;
   if(pal.snow > 0.02) updateSnow(dt, now/1000);
   stars.position.copy(camera.position);
   _wc.copy(winDay).lerp(winNight, pal.night);
-  winMat.color.copy(_wc); houseWinMat.color.copy(_wc);
+  winMat.color.copy(_wc); houseWinMat.color.copy(_wc); lampMat.color.copy(_wc);
   if(headlight) headlight.intensity = pal.night * 2.4;
   waterMat.color.copy(pal.sky).lerp(new THREE.Color(0x1d6ea8), 0.72);
 
