@@ -15,15 +15,19 @@
   #region{position:fixed;top:20%;left:50%;transform:translateX(-50%);color:#fff;font-size:clamp(20px,4.5vw,34px);
     font-weight:600;letter-spacing:.14em;text-shadow:0 2px 18px rgba(0,0,0,.65);opacity:0;transition:opacity 1.2s ease;pointer-events:none;text-align:center;white-space:nowrap;z-index:5}
   #region small{display:block;font-size:12px;font-weight:400;letter-spacing:.3em;opacity:.85;margin-top:6px}
-  #bar{position:fixed;left:50%;transform:translateX(-50%);bottom:max(16px,env(safe-area-inset-bottom));
-    display:flex;gap:8px;align-items:center;background:rgba(10,14,24,.42);backdrop-filter:blur(8px);
-    padding:8px 12px;border-radius:999px;color:#fff;z-index:5;max-width:96vw;flex-wrap:wrap;justify-content:center}
+  #ui{position:fixed;left:50%;transform:translateX(-50%);bottom:max(12px,env(safe-area-inset-bottom));z-index:5;
+    display:flex;flex-direction:column;align-items:center;gap:8px;max-width:97vw}
+  #bar{display:flex;gap:8px;align-items:center;background:rgba(10,14,24,.42);backdrop-filter:blur(8px);
+    padding:8px 12px;border-radius:999px;color:#fff;max-width:97vw;flex-wrap:wrap;justify-content:center}
   #bar button{border:0;border-radius:999px;background:rgba(255,255,255,.16);color:#fff;padding:8px 13px;font-size:13px;cursor:pointer}
   #bar button:active{background:rgba(255,255,255,.32)}
   #clock{font-variant-numeric:tabular-nums;font-size:13px;opacity:.9;min-width:44px;text-align:center}
-  #mapbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(max(16px,env(safe-area-inset-bottom)) + 58px);
-    display:flex;gap:6px;background:rgba(10,14,24,.42);backdrop-filter:blur(8px);padding:7px 10px;border-radius:999px;z-index:5;
-    max-width:96vw;overflow-x:auto;scrollbar-width:none}
+  #mapbar{display:flex;gap:6px;background:rgba(10,14,24,.42);backdrop-filter:blur(8px);padding:7px 10px;border-radius:999px;
+    max-width:97vw;overflow-x:auto;scrollbar-width:none}
+  @media (max-width:560px){
+    #bar button{padding:7px 10px;font-size:12px}
+    #mapbar button{padding:6px 10px;font-size:12px}
+  }
   #mapbar::-webkit-scrollbar{display:none}
   #mapbar button{border:0;border-radius:999px;background:rgba(255,255,255,.14);color:#fff;padding:7px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap}
   #mapbar button.on{background:#fff;color:#16222e;font-weight:700}
@@ -37,6 +41,7 @@
 <div id="title">어디든 가는 기차 · 3D<small>실시간 3D 버전입니다 · <a href="iso.html">2D 아이소 버전</a></small></div>
 <div id="region"></div>
 <div id="err"></div>
+<div id="ui">
 <div id="mapbar"></div>
 <div id="bar">
   <button id="playBtn">멈추기</button>
@@ -44,6 +49,7 @@
   <button id="speedBtn">속도 1배</button>
   <button id="soundBtn">소리 켜기</button>
   <span id="clock">00:00</span>
+</div>
 </div>
 
 <script src="assets/three.min.js"></script>
@@ -142,7 +148,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.12;
+renderer.toneMappingExposure = 1.04;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -232,7 +238,7 @@ function carSideTexture(hex, isLoco){
     g.fillStyle="rgba(0,0,0,.3)";                                          // 환기구
     for(let i=0;i<5;i++) g.fillRect(300+i*30, 226, 18, 5);
     g.fillStyle="rgba(255,255,255,.75)"; g.font="bold 30px sans-serif";
-    g.fillText(isLoco? "HT-7100" : "HEALING LINE", 396, 128);
+    g.fillText(isLoco? "HT-7100" : "HEALING LINE", 396, 197);
     if(isLoco){ g.fillStyle="rgba(16,26,36,.9)"; g.fillRect(w-238, 44, 128, 74); } // 운전실 창
   });
 }
