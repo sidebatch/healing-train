@@ -21,6 +21,12 @@
   #bar button{border:0;border-radius:999px;background:rgba(255,255,255,.16);color:#fff;padding:8px 13px;font-size:13px;cursor:pointer}
   #bar button:active{background:rgba(255,255,255,.32)}
   #clock{font-variant-numeric:tabular-nums;font-size:13px;opacity:.9;min-width:44px;text-align:center}
+  #mapbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(max(16px,env(safe-area-inset-bottom)) + 58px);
+    display:flex;gap:6px;background:rgba(10,14,24,.42);backdrop-filter:blur(8px);padding:7px 10px;border-radius:999px;z-index:5;
+    max-width:96vw;overflow-x:auto;scrollbar-width:none}
+  #mapbar::-webkit-scrollbar{display:none}
+  #mapbar button{border:0;border-radius:999px;background:rgba(255,255,255,.14);color:#fff;padding:7px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap}
+  #mapbar button.on{background:#fff;color:#16222e;font-weight:700}
   #err{position:fixed;top:38%;left:50%;transform:translate(-50%,-50%);max-width:86vw;background:rgba(120,20,20,.92);color:#fff;
     padding:14px 18px;border-radius:12px;font-size:13px;line-height:1.5;display:none;z-index:9;white-space:pre-wrap}
   #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#dfeaf5;font-size:15px;letter-spacing:.06em;z-index:4}
@@ -31,6 +37,7 @@
 <div id="title">어디든 가는 기차 · 3D<small>실시간 3D 버전입니다 · <a href="iso.html">2D 아이소 버전</a></small></div>
 <div id="region"></div>
 <div id="err"></div>
+<div id="mapbar"></div>
 <div id="bar">
   <button id="playBtn">멈추기</button>
   <button id="camBtn">카메라: 영화</button>
@@ -65,7 +72,8 @@ function rnd(){ _seed = (_seed*16807)%2147483647; return (_seed-1)/2147483646; }
 const SEG3 = 820, BLEND3 = 230;
 const PALS = [
   { name:"아침 초원", sub:"MEADOW", sky:0xa9cfee, gA:0x79b657, gB:0x639e47, far:0x8fb98a, sun:0xfff2d8, sunI:1.2, hemiI:0.75, night:0, coast:0, alpine:0, snow:0 },
-  { name:"깊은 숲",   sub:"FOREST", sky:0x9ec9b4, gA:0x4f8a45, gB:0x3d7038, far:0x5d8a66, sun:0xf2ffd8, sunI:1.05, hemiI:0.65, night:0, coast:0, alpine:0, snow:0 },
+  { name:"깊은 숲",   sub:"FOREST", sky:0x9ec9b4, gA:0x4f8a45, gB:0x3d7038, far:0x5d8a66, sun:0xf2ffd8, sunI:1.05, hemiI:0.65, night:0, coast:0, alpine:0, snow:0, mount:0 },
+  { name:"산", sub:"MOUNTAIN", sky:0xa8c8e0, gA:0x6f9a52, gB:0x5d8a48, far:0x7d9b84, sun:0xfff6e0, sunI:1.15, hemiI:0.7, night:0, coast:0, alpine:0, snow:0, mount:1 },
   { name:"바닷가",    sub:"COAST",  sky:0xa5dcf2, gA:0x79b657, gB:0x679e4c, far:0x7fb2c9, sun:0xfff6d8, sunI:1.25, hemiI:0.8, night:0, coast:1, alpine:0, snow:0 },
   { name:"노을 사막", sub:"DESERT", sky:0xf2c48d, gA:0xddba68, gB:0xcaa050, far:0xc98d5a, sun:0xffd9a0, sunI:1.3, hemiI:0.7, night:0.15, coast:0, alpine:0, snow:0 },
   { name:"눈 내리는 마을", sub:"SNOW", sky:0xcfdde8, gA:0xf0f5f9, gB:0xdfe9f1, far:0xb9cbd8, sun:0xeef4ff, sunI:1.0, hemiI:0.8, night:0, coast:0, alpine:0, snow:0.8 },
@@ -84,26 +92,30 @@ function paletteAt3(s){
   const t = smooth(clamp((into-(SEG3-BLEND3))/BLEND3, 0, 1));
   const o = { name:cur.name, sub:cur.sub, sky:new THREE.Color(), gA:new THREE.Color(), gB:new THREE.Color(), far:new THREE.Color(), sun:new THREE.Color(),
     sunI:lerp(cur.sunI,nxt.sunI,t), hemiI:lerp(cur.hemiI,nxt.hemiI,t), night:lerp(cur.night,nxt.night,t), coast:lerp(cur.coast,nxt.coast,t),
-    alpine:lerp(cur.alpine,nxt.alpine,t), snow:lerp(cur.snow,nxt.snow,t) };
+    alpine:lerp(cur.alpine,nxt.alpine,t), snow:lerp(cur.snow,nxt.snow,t), mount:lerp(cur.mount||0,nxt.mount||0,t) };
   lerpCol(o.sky, cur.sky, nxt.sky, t); lerpCol(o.gA, cur.gA, nxt.gA, t);
   lerpCol(o.gB, cur.gB, nxt.gB, t); lerpCol(o.far, cur.far, nxt.far, t); lerpCol(o.sun, cur.sun, nxt.sun, t);
   return o;
 }
 
 /* ================= world path ================= */
-const ALP_W = PALS.map(p=>p.alpine||0);
-function alpineW(s){
-  const i = Math.floor(s/SEG3), n = ALP_W.length;
-  const cur = ALP_W[((i%n)+n)%n], nxt = ALP_W[(((i+1)%n)+n)%n];
+const ALP_W = PALS.map(p=>p.alpine||0), MNT_W = PALS.map(p=>p.mount||0);
+function biomeW(s, arr){
+  const i = Math.floor(s/SEG3), n = arr.length;
+  const cur = arr[((i%n)+n)%n], nxt = arr[(((i+1)%n)+n)%n];
   const into = s - i*SEG3;
   const t = smooth(clamp((into-(SEG3-BLEND3))/BLEND3, 0, 1));
   return lerp(cur, nxt, t);
 }
+function alpineW(s){ return biomeW(s, ALP_W); }
+function mountW(s){ return biomeW(s, MNT_W); }
 function latAt(s){ return Math.sin(s*0.004)*90 + Math.sin(s*0.0011+1.3)*140 + Math.sin(s*0.00023+0.5)*180; }
 function elevAt(s){
   const base = Math.sin(s*0.0021+0.7)*4.5 + Math.sin(s*0.0006)*7 + Math.sin(s*0.0053)*1.6;
-  const aw = alpineW(s);
-  return base + aw * (11 + Math.sin(s*0.0013+2.0)*5.5 + Math.sin(s*0.0042)*1.4); // 설산 구간은 높이 오른다
+  const aw = alpineW(s), mw = mountW(s);
+  return base
+    + aw * (11 + Math.sin(s*0.0013+2.0)*5.5 + Math.sin(s*0.0042)*1.4)   // 설산은 높이
+    + mw * (7 + Math.sin(s*0.0017+0.9)*3.2 + Math.sin(s*0.005)*1.0);     // 산은 중간 높이로 오른다
 }
 const _pv = new THREE.Vector3();
 function pathPoint(s, out){ return (out||_pv).set(s, elevAt(s), latAt(s)); }
@@ -112,7 +124,7 @@ function groundH(x, z){
   const palG = paletteAt3(x);
   const sd = z - lz, d = Math.abs(sd);
   const t = clamp((d-16)/90, 0, 1), tt = t*t;
-  const rugged = 1 + palG.alpine*1.9; // 설산은 지형이 훨씬 험하게
+  const rugged = 1 + palG.alpine*1.9 + palG.mount*1.25; // 산·설산은 지형이 험하게
   let h = e + (Math.sin(x*0.011+z*0.017)*2.2 + Math.sin(x*0.004-z*0.006+2)*4.5 + Math.sin((x+z)*0.0016)*7) * tt * rugged;
   const cf = palG.coast;
   if(cf > 0.03 && sd > 0){ // 바닷가 쪽은 해변처럼 낮아짐
@@ -136,6 +148,16 @@ document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xa9cfee);
 scene.fog = new THREE.Fog(0xa9cfee, 130, 720);
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite:false, fog:false,
+  uniforms: { top: { value: new THREE.Color(0x8fc3e8) }, bot: { value: new THREE.Color(0xd8ecfa) } },
+  vertexShader: "varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }",
+  fragmentShader: "uniform vec3 top; uniform vec3 bot; varying vec3 vP; void main(){ float h = clamp(normalize(vP).y*1.7+0.10, 0.0, 1.0); gl_FragColor = vec4(mix(bot, top, pow(h,0.75)), 1.0); }"
+});
+const skyDome = new THREE.Mesh(new THREE.SphereGeometry(1500, 24, 12), skyMat);
+skyDome.frustumCulled = false;
+scene.add(skyDome);
+const _skyTop = new THREE.Color(), _skyBot = new THREE.Color(), _white = new THREE.Color(0xffffff), _black = new THREE.Color(0x000000);
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 2400);
 camera.position.set(-30, 14, 60);
 
@@ -312,7 +334,22 @@ function rockGeom(){
     colored(xform(new THREE.IcosahedronGeometry(0.62,0), 0.75,0.34,0.3, 0.2,0.3,0.6, 1,0.7,0.9), 0x7a7c80),
   ]);
 }
-const GEOMS = { pine: pineGeom(false), pineSnow: pineGeom(true), round: roundGeom(), palm: palmGeom(), cactus: cactusGeom(), rock: rockGeom() };
+function bushGeom(){
+  return mergeGeoms([
+    colored(xform(new THREE.IcosahedronGeometry(0.85,0), 0,0.55,0, 0.3,0.5,0.2, 1,0.75,1), 0x2f6627),
+    colored(xform(new THREE.IcosahedronGeometry(0.6,0), 0.55,0.45,0.3, 0.1,0.9,0.4, 1,0.7,1), 0x386e2c),
+  ]);
+}
+function poleGeom(){
+  return mergeGeoms([
+    colored(xform(new THREE.CylinderGeometry(0.09,0.13,7.6,6), 0,3.8,0), 0x5b4632),
+    colored(xform(new THREE.BoxGeometry(2.6,0.14,0.14), 0,6.9,0), 0x4c3a28),
+    colored(xform(new THREE.BoxGeometry(1.9,0.12,0.12), 0,6.1,0), 0x4c3a28),
+  ]);
+}
+const GEOMS = { pine: pineGeom(false), pineSnow: pineGeom(true), round: roundGeom(), palm: palmGeom(), cactus: cactusGeom(), rock: rockGeom(), bush: bushGeom() };
+const poleGeomInst = poleGeom();
+const SHARED_GEO = new Set([...Object.values(GEOMS), poleGeomInst]);
 
 /* ================= houses ================= */
 const houseWinMat = new THREE.MeshBasicMaterial({ color: 0x2b3e4f });
@@ -371,13 +408,17 @@ function buildChunk(ci){
   const rockTint = new THREE.Color(0x868f99);
   for(let i=0;i<pos.count;i++){
     const wx = centerX + pos.getX(i), wz = latC + pos.getZ(i);
+    const e0 = elevAt(wx);
     pos.setY(i, groundH(wx, wz));
     const pal = paletteAt3(wx);
     cc.copy(pal.gA).lerp(pal.gB, hash(Math.floor(wx/9)*3.7 + Math.floor(wz/9)*9.1));
     const dTrack = wz - latAt(wx);
     if(Math.abs(dTrack) < 10) cc.lerp(new THREE.Color(0x8a7355), (1-Math.abs(dTrack)/10)*0.55); // 선로 옆 흙
     if(pal.coast > 0.4 && dTrack > 13 && dTrack < 34) cc.lerp(new THREE.Color(0xe6d29a), pal.coast*0.85); // 모래사장
-    if(pal.alpine > 0.3){ const rk = hash(Math.floor(wx/6)*7.3 + Math.floor(wz/6)*3.9); cc.lerp(rockTint, pal.alpine * (0.2 + rk*0.5)); } // 설산 바위 질감
+    const rkAmt = Math.max(pal.alpine, pal.mount*0.85);
+    if(rkAmt > 0.3){ const rk = hash(Math.floor(wx/6)*7.3 + Math.floor(wz/6)*3.9); cc.lerp(rockTint, rkAmt * (0.2 + rk*0.5)); } // 산·설산 바위 질감
+    const hh = pos.getY(i) - e0;
+    if(hh > 13) cc.lerp(rockTint, clamp((hh-13)/36, 0, 0.5)); // 높은 곳은 어디서든 바위색
     colors[i*3]=cc.r; colors[i*3+1]=cc.g; colors[i*3+2]=cc.b;
   }
   tg.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -439,16 +480,34 @@ function buildChunk(ci){
   rails.frustumCulled = false;
   group.add(rails);
 
+  // 전신주 (선로를 따라)
+  const nP = Math.floor(CHUNK/46);
+  const poles = new THREE.InstancedMesh(poleGeomInst, foliageMat, nP);
+  for(let i=0;i<nP;i++){
+    const s = ci*CHUNK + i*46 + 24;
+    pathPoint(s, _tp); pathPoint(s+2, _ta);
+    const dx=_ta.x-_tp.x, dz=_ta.z-_tp.z, il=1/Math.hypot(dx,dz);
+    const px=-dz*il, pz=dx*il;
+    _dummy.position.set(_tp.x - px*9.5, _tp.y - 0.1, _tp.z - pz*9.5);
+    _dummy.lookAt(_ta.x - px*9.5, _ta.y - 0.1, _ta.z - pz*9.5);
+    _dummy.rotation.x = 0; _dummy.rotation.z = 0;
+    _dummy.updateMatrix();
+    poles.setMatrixAt(i, _dummy.matrix);
+  }
+  poles.castShadow = true; poles.frustumCulled = false;
+  group.add(poles);
+
   // 나무/바위 (인스턴싱)
   const bName = biomeAt3(centerX).sub;
-  const plan = { pine:0, pineSnow:0, round:0, palm:0, cactus:0, rock:0 };
-  if(bName==='MEADOW'){ plan.round=26; plan.pine=7; plan.rock=3; }
-  else if(bName==='FOREST'){ plan.pine=44; plan.round=10; plan.rock=3; }
-  else if(bName==='COAST'){ plan.palm=17; plan.round=7; plan.rock=2; }
-  else if(bName==='DESERT'){ plan.cactus=15; plan.rock=9; }
-  else if(bName==='SNOW'){ plan.pineSnow=34; plan.rock=2; }
-  else if(bName==='ALPINE'){ plan.pineSnow=18; plan.rock=16; }
-  else if(bName==='NIGHT'){ plan.pine=24; plan.round=6; }
+  const plan = { pine:0, pineSnow:0, round:0, palm:0, cactus:0, rock:0, bush:0 };
+  if(bName==='MEADOW'){ plan.round=34; plan.pine=10; plan.rock=3; plan.bush=14; }
+  else if(bName==='FOREST'){ plan.pine=56; plan.round=10; plan.rock=3; plan.bush=10; }
+  else if(bName==='MOUNTAIN'){ plan.pine=32; plan.round=8; plan.rock=14; plan.bush=6; }
+  else if(bName==='COAST'){ plan.palm=22; plan.round=7; plan.rock=2; plan.bush=6; }
+  else if(bName==='DESERT'){ plan.cactus=20; plan.rock=12; }
+  else if(bName==='SNOW'){ plan.pineSnow=42; plan.rock=2; }
+  else if(bName==='ALPINE'){ plan.pineSnow=22; plan.rock=20; }
+  else if(bName==='NIGHT'){ plan.pine=30; plan.round=6; }
   for(const type of Object.keys(plan)){
     const cnt = plan[type];
     if(!cnt) continue;
@@ -487,8 +546,8 @@ function buildChunk(ci){
     group.add(house);
   }
 
-  // 먼 산 (설산에서는 크고 가깝게)
-  const isAlp = bName==='ALPINE';
+  // 먼 산 (산·설산에서는 크고 가깝게)
+  const isAlp = bName==='ALPINE' || bName==='MOUNTAIN';
   if(rnd() < (isAlp? 1 : 0.85)){
     const nM = isAlp? 2 + Math.floor(rnd()*2) : 1 + Math.floor(rnd()*2);
     for(let i=0;i<nM;i++){
@@ -521,7 +580,7 @@ function updateChunks(){
   for(const [ci, g] of chunks){
     if(ci<lo || ci>hi){
       scene.remove(g);
-      g.traverse(o=>{ if(o.geometry && o.geometry!==sleeperGeom && o.geometry!==railGeom && !Object.values(GEOMS).includes(o.geometry)) o.geometry.dispose(); });
+      g.traverse(o=>{ if(o.geometry && o.geometry!==sleeperGeom && o.geometry!==railGeom && !SHARED_GEO.has(o.geometry)) o.geometry.dispose(); });
       chunks.delete(ci);
     }
   }
@@ -738,6 +797,32 @@ document.getElementById('camBtn').addEventListener('click', e=>{
   camMode = (camMode+1)%CAMS.length;
   e.target.textContent = "카메라: " + CAMS[camMode];
 });
+/* 맵 선택 버튼 */
+const MAP_LABELS = ["초원", "숲", "산", "바다", "사막", "눈 마을", "설산", "밤"];
+const mapChips = [];
+{
+  const bar = document.getElementById('mapbar');
+  PALS.forEach((p, idx)=>{
+    const b = document.createElement('button');
+    b.textContent = MAP_LABELS[idx] || p.name;
+    b.addEventListener('click', ()=> jumpToBiome(idx));
+    bar.appendChild(b);
+    mapChips.push(b);
+  });
+}
+function jumpToBiome(idx){
+  const n = PALS.length, ci = Math.floor(headS/SEG3);
+  for(let k=0;k<=n;k++){
+    const cand = ci + k;
+    if(((cand % n) + n) % n === idx){ headS = cand*SEG3 + 30; break; }
+  }
+  lastBiome = -1;
+}
+function markMapChip(){
+  const n = PALS.length;
+  const cur = ((biomeIndexAt3(headS) % n) + n) % n;
+  mapChips.forEach((b, i)=> b.classList.toggle('on', i === cur));
+}
 let audioCtx=null, audioOn=false, padTimer=null;
 function toggleAudio(){
   if(audioOn){
@@ -822,6 +907,9 @@ function frame(now){
   const pal = paletteAt3(headS);
   scene.background.copy(pal.sky);
   scene.fog.color.copy(pal.sky);
+  skyDome.position.copy(camera.position);
+  _skyTop.copy(pal.sky).lerp(_black, 0.14); _skyBot.copy(pal.sky).lerp(_white, 0.3);
+  skyMat.uniforms.top.value.copy(_skyTop); skyMat.uniforms.bot.value.copy(_skyBot);
   hemi.color.copy(pal.sky); hemi.groundColor.copy(pal.gB); hemi.intensity = pal.hemiI;
   sun.color.copy(pal.sun); sun.intensity = pal.sunI;
   mountainMat.color.copy(pal.far);
@@ -847,7 +935,7 @@ function frame(now){
   updateCamera(dt, elapsed);
 
   const bi = biomeIndexAt3(headS);
-  if(bi !== lastBiome){ lastBiome = bi; announce(biomeAt3(headS)); }
+  if(bi !== lastBiome){ lastBiome = bi; announce(biomeAt3(headS)); markMapChip(); }
   const mm = String(Math.floor(elapsed/60)).padStart(2,'0'), ss = String(Math.floor(elapsed%60)).padStart(2,'0');
   clockEl.textContent = `${mm}:${ss}`;
   renderer.render(scene, camera);
