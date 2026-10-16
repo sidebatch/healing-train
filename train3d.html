@@ -355,6 +355,22 @@ function poleGeom(){
     colored(xform(new THREE.BoxGeometry(1.9,0.12,0.12), 0,6.1,0), 0x4c3a28),
   ]);
 }
+function ridgeGeom(){
+  const parts = [];
+  const peaks = [ [-64, 40, 30], [-30, 62, 44], [4, 78, 52], [38, 58, 40], [70, 36, 28] ];
+  for(const [px, ph, pr] of peaks){
+    parts.push(colored(xform(new THREE.ConeGeometry(pr, ph, 7), px, ph/2, (hash(px*1.7)-0.5)*16), 0xffffff));
+  }
+  parts.push(colored(xform(new THREE.CylinderGeometry(96, 110, 26, 7), 0, 6, 0, 0, 0, 0, 1, 1, 0.42), 0xffffff)); // 길게 깔린 대지
+  const g = mergeGeoms(parts);
+  const pos = g.attributes.position, col = g.attributes.color; // 높이 따라: 아래는 어둡게, 봉우리는 눈처럼 밝게
+  for(let i=0;i<pos.count;i++){
+    const t = clamp((pos.getY(i)-30)/38, 0, 1);
+    const v = 0.62 + t*0.5;
+    col.setXYZ(i, v, v, v*1.02);
+  }
+  return g;
+}
 function lighthouseGeom(){
   return mergeGeoms([
     colored(xform(new THREE.CylinderGeometry(1.7,2.1,7.6,10), 0,3.8,0), 0xf2efe8),
@@ -412,6 +428,9 @@ const GEOMS = { pine: pineGeom(false), pineSnow: pineGeom(true), round: roundGeo
   lighthouse: lighthouseGeom(), boat: boatGeom(), snowman: snowmanGeom(), bale: baleGeom(), signal: signalGeom(), lamp: lampGeom() };
 const poleGeomInst = poleGeom();
 const SHARED_GEO = new Set([...Object.values(GEOMS), poleGeomInst, ...UMB_GEOMS]);
+const ridgeGeomInst = ridgeGeom();
+SHARED_GEO.add(ridgeGeomInst);
+const ridgeMat = new THREE.MeshStandardMaterial({ vertexColors:true, color:0x8fb98a, roughness:1, flatShading:true });
 const mesaMat = new THREE.MeshStandardMaterial({ color:0xbe8856, roughness:1, flatShading:true });
 const iceMat = new THREE.MeshStandardMaterial({ color:0xcfe4ee, roughness:0.15, metalness:0.1 });
 const fieldMats = [0xd9b45c, 0x86a83e, 0x8a6a48].map(c=> new THREE.MeshStandardMaterial({ color:c, roughness:1 }));
@@ -457,7 +476,6 @@ const sleeperMat = new THREE.MeshStandardMaterial({ color:0x4c3a28, roughness:1 
 const railGeom = new THREE.BoxGeometry(0.1, 0.18, 7);
 const railMat = new THREE.MeshStandardMaterial({ color:0xb9c1c9, roughness:0.32, metalness:0.85 });
 const waterMat = new THREE.MeshStandardMaterial({ color:0x2f8fc4, roughness:0.22, metalness:0.1, transparent:true, opacity:0.92 });
-const mountainMat = new THREE.MeshStandardMaterial({ color:0x8fb98a, roughness:1, flatShading:true });
 const _dummy = new THREE.Object3D();
 const _tp = new THREE.Vector3(), _ta = new THREE.Vector3();
 
@@ -746,18 +764,21 @@ function buildChunk(ci){
     group.add(lake);
   }
 
-  // 먼 산 (산·설산에서는 크고 가깝게)
-  const isAlp = bName==='ALPINE' || bName==='MOUNTAIN';
-  if(rnd() < (isAlp? 1 : 0.85)){
-    const nM = isAlp? 2 + Math.floor(rnd()*2) : 1 + Math.floor(rnd()*2);
-    for(let i=0;i<nM;i++){
-      const mx = ci*CHUNK + rnd()*CHUNK;
-      const side = rnd()<0.5? -1: 1;
-      const mz = latAt(mx) + side*(bName==='ALPINE'? 195 + rnd()*85 : isAlp? 235 + rnd()*100 : 310 + rnd()*130);
-      const m = new THREE.Mesh(new THREE.ConeGeometry(isAlp? 150+rnd()*120 : 90+rnd()*90, isAlp? 135+rnd()*100 : 80+rnd()*80, 5), mountainMat);
-      m.position.set(mx, -6, mz);
-      m.rotation.y = rnd()*Math.PI;
-      group.add(m);
+  // 먼 산맥 (맵에 따라 다르게: 사막엔 없고, 산·설산엔 크고 가깝게)
+  const rangeP = (bName==='MOUNTAIN'||bName==='ALPINE')? 1 : bName==='DESERT'? 0 : bName==='MEADOW'? 0.35 : bName==='COAST'? 0.4 : bName==='FOREST'? 0.6 : 0.55;
+  if(rnd() < rangeP){
+    const nR = (bName==='MOUNTAIN'||bName==='ALPINE')? 2 : 1;
+    for(let i=0;i<nR;i++){
+      const rx = ci*CHUNK + rnd()*CHUNK;
+      let rSide = rnd()<0.5? -1: 1;
+      if(bName==='COAST') rSide = -1; // 바다는 육지 쪽에만
+      const rDist = bName==='ALPINE'? 200 + rnd()*90 : bName==='MOUNTAIN'? 250 + rnd()*100 : 300 + rnd()*130;
+      const ridge = new THREE.Mesh(ridgeGeomInst, ridgeMat);
+      const rs = bName==='ALPINE'? 1.4 + rnd()*0.7 : 1.0 + rnd()*0.6;
+      ridge.scale.set(rs, rs*(0.9 + rnd()*0.3), rs);
+      ridge.position.set(rx, -4, latAt(rx) + rSide*rDist);
+      ridge.rotation.y = (rnd()-0.5)*0.5;
+      group.add(ridge);
     }
   }
 
@@ -1117,7 +1138,7 @@ function frame(now){
   skyMat.uniforms.top.value.copy(_skyTop); skyMat.uniforms.bot.value.copy(_skyBot);
   hemi.color.copy(pal.sky); hemi.groundColor.copy(pal.gB); hemi.intensity = pal.hemiI;
   sun.color.copy(pal.sun); sun.intensity = pal.sunI;
-  mountainMat.color.copy(pal.far);
+  ridgeMat.color.copy(pal.far);
   const tp = cars[0].group.position;
   sun.position.set(tp.x + 190, tp.y + 260, tp.z + 130);
   sun.target.position.copy(tp);
