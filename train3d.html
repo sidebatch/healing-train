@@ -898,7 +898,7 @@ const winDay = new THREE.Color(0x2b3e4f), winNight = new THREE.Color(0xffca7a), 
 let last = performance.now();
 function frame(now){
   requestAnimationFrame(frame);
-  const dt = Math.min((now-last)/1000, 0.05); last = now;
+  const dt = Math.max(0, Math.min((now-last)/1000, 0.05)); last = now;
   const speed = 15 * speedMul;
   if(playing){ headS += speed*dt; elapsed += dt; }
 
