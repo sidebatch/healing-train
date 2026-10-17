@@ -59,6 +59,7 @@
 </div>
 
 <script src="assets/three.min.js"></script>
+<script src="assets/RGBELoader.js"></script>
 <script>
 "use strict";
 const errBox = document.getElementById('err');
@@ -182,6 +183,21 @@ const skyMat = new THREE.ShaderMaterial({
 const skyDome = new THREE.Mesh(new THREE.SphereGeometry(1500, 24, 12), skyMat);
 skyDome.frustumCulled = false;
 scene.add(skyDome);
+/* 실제 하늘 사진 (Poly Haven CC0 HDRI): 배경 + 환경 조명 */
+const bgColor = new THREE.Color(0xa9cfee);
+scene.background = bgColor;
+const pmrem = new THREE.PMREMGenerator(renderer);
+const skyTexs = {}, envCache = {};
+let skyMode = 'gradient';
+if(THREE.RGBELoader){
+  const rgbe = new THREE.RGBELoader();
+  for(const [key, file] of [['day', 'assets/sky_day.hdr'], ['sunset', 'assets/sky_sunset.hdr']]){
+    rgbe.load(file, tex=>{
+      tex.mapping = THREE.EquirectangularReflectionMapping;
+      skyTexs[key] = tex;
+    }, undefined, ()=>{});
+  }
+}
 const _skyTop = new THREE.Color(), _skyBot = new THREE.Color(), _white = new THREE.Color(0xffffff), _black = new THREE.Color(0x000000);
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 2400);
 camera.position.set(-30, 14, 60);
@@ -1244,6 +1260,9 @@ function updateCamera(dt, t){
   camera.lookAt(_look);
 }
 
+/* HDRI 환경광이 너무 세지 않게 */
+[terrainMat, ballastMat, foliageMat, mesaMat, ridgeMat, waterMat, deckMat, iceMat, ...fieldMats].forEach(m=>{ m.envMapIntensity = 0.5; });
+
 /* ================= main loop ================= */
 const winDay = new THREE.Color(0x2b3e4f), winNight = new THREE.Color(0xffca7a), _wc = new THREE.Color();
 let last = performance.now();
@@ -1262,11 +1281,26 @@ function frame(now){
   updateSmoke(dt);
 
   const pal = paletteAt3(headS);
-  scene.background.copy(pal.sky);
   scene.fog.color.copy(pal.sky);
-  skyDome.position.copy(camera.position);
-  _skyTop.copy(pal.sky).lerp(_black, 0.14); _skyBot.copy(pal.sky).lerp(_white, 0.3);
-  skyMat.uniforms.top.value.copy(_skyTop); skyMat.uniforms.bot.value.copy(_skyBot);
+  const wantSky = pal.night > 0.6 ? 'gradient'
+    : (biomeAt3(headS).sub === 'SUNSET' || biomeAt3(headS).sub === 'DESERT') ? 'sunset' : 'day';
+  if(wantSky !== skyMode){
+    if(wantSky === 'gradient'){
+      scene.background = bgColor; scene.environment = null; skyDome.visible = true; skyMode = 'gradient';
+    } else if(skyTexs[wantSky]){
+      scene.background = skyTexs[wantSky]; skyDome.visible = false;
+      if(!envCache[wantSky]) envCache[wantSky] = pmrem.fromEquirectangular(skyTexs[wantSky]).texture;
+      scene.environment = envCache[wantSky];
+      skyMode = wantSky;
+    }
+  }
+  if(skyMode === 'gradient'){
+    if(scene.background !== bgColor) scene.background = bgColor;
+    bgColor.copy(pal.sky);
+    skyDome.position.copy(camera.position);
+    _skyTop.copy(pal.sky).lerp(_black, 0.14); _skyBot.copy(pal.sky).lerp(_white, 0.3);
+    skyMat.uniforms.top.value.copy(_skyTop); skyMat.uniforms.bot.value.copy(_skyBot);
+  }
   hemi.color.copy(pal.sky); hemi.groundColor.copy(pal.gB); hemi.intensity = pal.hemiI;
   sun.color.copy(pal.sun); sun.intensity = pal.sunI;
   ridgeMat.color.copy(pal.far);
