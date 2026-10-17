@@ -46,7 +46,7 @@
 <div id="loading">세상을 만드는 중...</div>
 <div id="title">어디든 가는 기차 · 3D<small>실시간 3D 버전입니다 · <a href="iso.html">2D 아이소 버전</a></small></div>
 <div id="region"></div>
-<div id="mapcredit" style="display:none;position:fixed;left:8px;bottom:64px;color:rgba(255,255,255,.75);font-size:10px;z-index:5;text-shadow:0 1px 3px rgba(0,0,0,.5)">지도 · © OpenStreetMap contributors (ODbL) / 지형 · AWS Terrain Tiles · 위성 · Esri World Imagery</div>
+<div id="mapcredit" style="display:none;position:fixed;left:8px;bottom:64px;color:rgba(255,255,255,.75);font-size:10px;z-index:5;text-shadow:0 1px 3px rgba(0,0,0,.5)">지도 · © OpenStreetMap contributors (ODbL) / 지형 · AWS Terrain Tiles · 위성 · Esri World Imagery<span id="satstat"></span></div>
 <div id="nextpoi" style="display:none;position:fixed;right:10px;bottom:64px;color:#fff;font-size:12px;line-height:1.7;text-align:right;z-index:5;text-shadow:0 1px 4px rgba(0,0,0,.65)"></div>
 <div id="err"></div>
 <div id="ui">
@@ -1266,9 +1266,18 @@ function mercPx(lat, lon){
   return [ (lon+180)/360*MERC16, (1 - Math.log(Math.tan(r) + 1/Math.cos(r))/Math.PI)/2*MERC16 ];
 }
 function latLonOf(x, z){ return [ REAL.meta.lat0 - z/REAL.meta.mz, REAL.meta.lon0 + x/REAL.meta.mx ]; }
+const SAT = { started:0, applied:0, tilesLoaded:0, tilesErr:0 };
+function refreshSatStat(){
+  const el = document.getElementById('satstat');
+  if(!el) return;
+  if(SAT.applied > 0) el.textContent = ` · 위성 지면 적용됨 (타일 ${SAT.tilesLoaded}장)`;
+  else if(SAT.started > 0 && SAT.tilesLoaded === 0 && SAT.tilesErr > 0) el.textContent = ' · 위성 지면 실패 (타일 응답 오류)';
+  else el.textContent = ' · 위성 지면 받는 중…';
+}
 function loadSatTexture(ci, group, terrainMesh, tintArr){
   const info = group.userData.texInfo;
   if(!info) return;
+  SAT.started++; refreshSatStat();
   const { tx0, ty0, tilesX, tilesY } = info;
   const K = 0.5;
   const canvas = document.createElement('canvas');
@@ -1278,18 +1287,19 @@ function loadSatTexture(ci, group, terrainMesh, tintArr){
   let remaining = tilesX*tilesY, loaded = 0, settled = false;
   const finish = ()=>{
     if(settled) return; settled = true;
-    if(loaded === 0 || !REAL.chunks.has(ci)) return;
+    if(loaded === 0 || !REAL.chunks.has(ci)){ refreshSatStat(); return; }
     const tex = new THREE.CanvasTexture(canvas);
     tex.anisotropy = 4;
     terrainMesh.material.map = tex;
     terrainMesh.material.needsUpdate = true;
     terrainMesh.geometry.setAttribute('color', new THREE.BufferAttribute(tintArr, 3));
+    SAT.applied++; refreshSatStat();
   };
   for(let ty=0; ty<tilesY; ty++) for(let tx=0; tx<tilesX; tx++){
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.onload = ()=>{ loaded++; ctx.drawImage(img, tx*256*K, ty*256*K, 256*K, 256*K); if(--remaining === 0) finish(); };
-    img.onerror = ()=>{ if(--remaining === 0) finish(); };
+    img.onload = ()=>{ loaded++; SAT.tilesLoaded++; ctx.drawImage(img, tx*256*K, ty*256*K, 256*K, 256*K); if(--remaining === 0) finish(); };
+    img.onerror = ()=>{ SAT.tilesErr++; if(--remaining === 0) finish(); };
     img.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/16/${ty0+ty}/${tx0+tx}`;
   }
   setTimeout(finish, 9000);
