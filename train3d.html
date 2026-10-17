@@ -1803,7 +1803,12 @@ function frame(now){
   clockEl.textContent = `${mm}:${ss}`;
   renderer.render(scene, camera);
 }
-if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').then(r => { if(r.update) r.update(); }).catch(()=>{});
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(window.__swReloaded) return; window.__swReloaded = true; location.reload();
+  });
+}
 announce(PALS[0]);
 document.getElementById('loading').style.display='none';
 requestAnimationFrame(frame);
