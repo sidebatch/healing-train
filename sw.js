@@ -1,4 +1,4 @@
-const CACHE = 'healing-train-v4';
+const CACHE = 'healing-train-v5';
 const CORE = [
   './', './index.html', './train3d.html', './iso.html', './side-view.html',
   './assets/three.min.js', './assets/RGBELoader.js', './assets/GLTFLoader.js', './assets/sky_day.hdr', './assets/sky_sunset.hdr',
@@ -13,12 +13,21 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(ks => Promise.all(ks.filter(k => k !== CACHE && !k.startsWith('sat-tiles')).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+  if (url.hostname === 'server.arcgisonline.com') {
+    // 위성 타일은 캐시 우선 (한 번 본 구간은 다시 받지 않음)
+    e.respondWith(
+      caches.open('sat-tiles-v1').then(c => c.match(e.request).then(hit => hit || fetch(e.request).then(r => {
+        const copy = r.clone(); c.put(e.request, copy); return r;
+      })))
+    );
+    return;
+  }
   if (url.origin !== location.origin) return;
   const isDoc = e.request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/');
   if (isDoc) {

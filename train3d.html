@@ -46,7 +46,8 @@
 <div id="loading">세상을 만드는 중...</div>
 <div id="title">어디든 가는 기차 · 3D<small>실시간 3D 버전입니다 · <a href="iso.html">2D 아이소 버전</a></small></div>
 <div id="region"></div>
-<div id="mapcredit" style="display:none;position:fixed;left:8px;bottom:64px;color:rgba(255,255,255,.75);font-size:10px;z-index:5;text-shadow:0 1px 3px rgba(0,0,0,.5)">지도 · © OpenStreetMap contributors (ODbL) / 지형 · AWS Terrain Tiles</div>
+<div id="mapcredit" style="display:none;position:fixed;left:8px;bottom:64px;color:rgba(255,255,255,.75);font-size:10px;z-index:5;text-shadow:0 1px 3px rgba(0,0,0,.5)">지도 · © OpenStreetMap contributors (ODbL) / 지형 · AWS Terrain Tiles · 위성 · Esri World Imagery</div>
+<div id="nextpoi" style="display:none;position:fixed;right:10px;bottom:64px;color:#fff;font-size:12px;line-height:1.7;text-align:right;z-index:5;text-shadow:0 1px 4px rgba(0,0,0,.65)"></div>
 <div id="err"></div>
 <div id="ui">
 <div id="mapbar"></div>
@@ -1177,7 +1178,7 @@ const REAL = { ready:false, meta:null, grid:null, rows:0, cols:0, samples:[], cu
 REAL.group.visible = false;
 scene.add(REAL.group);
 const HREF = 1400, VSCALE = 0.6, RSTEP = 300;
-let mode = 'dream', headSR = 1200, realDir = 1, lastPoi = '';
+let mode = 'dream', headSR = 1200, realDir = 1, lastPoi = '', lastNpTxt = '';
 const REAL_PAL = { name:'캐나다 로키', sub:'CANADIAN ROCKIES', sky:new THREE.Color(0x9fc8ee), gA:new THREE.Color(0x77a355), gB:new THREE.Color(0x51683f), far:new THREE.Color(0x8fa8bf), sun:new THREE.Color(0xfff2dd), sunI:1.25, hemiI:0.5, night:0, coast:0, alpine:0, snow:0, mount:0, desert:0 };
 function gridH(s, off){
   const m = REAL.meta, g = REAL.grid, C = REAL.cols;
@@ -1259,30 +1260,84 @@ Promise.all([
   fetch('assets/realroute/samples.bin').then(r=>r.arrayBuffer())
 ]).then(([meta, gbuf, sbuf])=>{ try{ buildRealData(meta, new Int16Array(gbuf), new Float32Array(sbuf)); }catch(e){} }).catch(()=>{});
 
+const MERC16 = 256 * 65536;
+function mercPx(lat, lon){
+  const r = lat*Math.PI/180;
+  return [ (lon+180)/360*MERC16, (1 - Math.log(Math.tan(r) + 1/Math.cos(r))/Math.PI)/2*MERC16 ];
+}
+function latLonOf(x, z){ return [ REAL.meta.lat0 - z/REAL.meta.mz, REAL.meta.lon0 + x/REAL.meta.mx ]; }
+function loadSatTexture(ci, group, terrainMesh, tintArr){
+  const info = group.userData.texInfo;
+  if(!info) return;
+  const { tx0, ty0, tilesX, tilesY } = info;
+  const K = 0.5;
+  const canvas = document.createElement('canvas');
+  canvas.width = tilesX*256*K; canvas.height = tilesY*256*K;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#5d7350'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  let remaining = tilesX*tilesY, loaded = 0, settled = false;
+  const finish = ()=>{
+    if(settled) return; settled = true;
+    if(loaded === 0 || !REAL.chunks.has(ci)) return;
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.anisotropy = 4;
+    terrainMesh.material.map = tex;
+    terrainMesh.material.needsUpdate = true;
+    terrainMesh.geometry.setAttribute('color', new THREE.BufferAttribute(tintArr, 3));
+  };
+  for(let ty=0; ty<tilesY; ty++) for(let tx=0; tx<tilesX; tx++){
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = ()=>{ loaded++; ctx.drawImage(img, tx*256*K, ty*256*K, 256*K, 256*K); if(--remaining === 0) finish(); };
+    img.onerror = ()=>{ if(--remaining === 0) finish(); };
+    img.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/16/${ty0+ty}/${tx0+tx}`;
+  }
+  setTimeout(finish, 9000);
+}
 const OFFS_R = [-800,-620,-480,-370,-280,-210,-155,-115,-84,-60,-42,-29,-20,-13,-7,0,7,13,20,29,42,60,84,115,155,210,280,370,480,620,800];
 const _cGrass = new THREE.Color(0x6d9153), _cForest = new THREE.Color(0x4f7038), _cRock = new THREE.Color(0x7e776c), _cSnow = new THREE.Color(0xe9edee), _tc = new THREE.Color();
 function buildChunkR(ci){
   const group = new THREE.Group();
   const s0 = ci * RSTEP;
   srand(5000 + ci*77);
+  let tminX = 1e18, tminY = 1e18, tmaxX = -1e18, tmaxY = -1e18;
+  for(const ss of [s0, s0 + RSTEP/2, s0 + RSTEP]){
+    const f = pathFrameR(ss);
+    for(const oo of [-830, 830]){
+      const [la, lo] = latLonOf(f.x + f.px*oo, f.z + f.pz*oo);
+      const [mxp, myp] = mercPx(la, lo);
+      tminX = Math.min(tminX, mxp); tmaxX = Math.max(tmaxX, mxp);
+      tminY = Math.min(tminY, myp); tmaxY = Math.max(tmaxY, myp);
+    }
+  }
+  const tx0 = Math.floor(tminX/256), ty0 = Math.floor(tminY/256);
+  const tilesX = Math.min(9, Math.floor(tmaxX/256) - tx0 + 1), tilesY = Math.min(9, Math.floor(tmaxY/256) - ty0 + 1);
+  group.userData.texInfo = { tx0, ty0, tilesX, tilesY };
   const rowsN = 31, colsN = OFFS_R.length;
-  const pos = [], col = [], uvA = [], idx = [];
+  const pos = [], col = [], tint = [], uvA = [], idx = [];
   for(let r=0;r<rowsN;r++){
     const s = s0 + r*(RSTEP/(rowsN-1));
     const f = pathFrameR(s), ty = trackYAt(s);
     for(let c=0;c<colsN;c++){
       const off = OFFS_R[c];
-      pos.push(f.x + f.px*off, terrainHR(s, off), f.z + f.pz*off);
-      uvA.push(s/260, off/260);
-      const rel = terrainHR(s, off) - ty;
+      const vx = f.x + f.px*off, vz = f.z + f.pz*off, vy = terrainHR(s, off);
+      pos.push(vx, vy, vz);
+      const [vla, vlo] = latLonOf(vx, vz);
+      const [vmx, vmy] = mercPx(vla, vlo);
+      uvA.push((vmx - tx0*256)/(tilesX*256), 1 - (vmy - ty0*256)/(tilesY*256));
+      const rel = vy - ty;
       const slope = Math.abs(terrainHR(s, off+14) - terrainHR(s, off-14)) / 28 + Math.abs(terrainHR(s+10, off) - terrainHR(s-10, off)) / 20;
       const n = hash(s*0.37 + off*1.7);
       if(slope > 0.85 || rel > 165) _tc.copy(_cRock);
-      else if(terrainHR(s, off) > 330) _tc.copy(_cSnow);
+      else if(vy > 330) _tc.copy(_cSnow);
       else if(Math.abs(off) > 60 && rel < 8) _tc.copy(_cForest);
       else _tc.copy(_cGrass);
       const v = 0.9 + n*0.2;
       col.push(_tc.r*v, _tc.g*v, _tc.b*v);
+      const tv = 0.93 + n*0.12;
+      if(slope > 0.85 || rel > 165) tint.push(0.92*tv, 0.91*tv, 0.90*tv);
+      else if(vy > 330) tint.push(1.04, 1.05, 1.06);
+      else tint.push(tv, tv*1.01, tv*0.99);
     }
   }
   for(let r=0;r<rowsN-1;r++) for(let c=0;c<colsN-1;c++){
@@ -1294,7 +1349,9 @@ function buildChunkR(ci){
   tg.setAttribute('color', new THREE.BufferAttribute(new Float32Array(col), 3));
   tg.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvA), 2));
   tg.setIndex(idx); tg.computeVertexNormals();
-  const terrain = new THREE.Mesh(tg, terrainMat);
+  const terrain = new THREE.Mesh(tg, new THREE.MeshStandardMaterial({ vertexColors:true, roughness:1, metalness:0 }));
+  terrain.material.envMapIntensity = 0.5;
+  terrain.userData.ownMat = true;
   terrain.receiveShadow = true; terrain.frustumCulled = false;
   group.add(terrain);
   const bPos = [], bUv = [], bIdx = [];
@@ -1389,6 +1446,7 @@ function buildChunkR(ci){
   }
   REAL.group.add(group);
   REAL.chunks.set(ci, group);
+  loadSatTexture(ci, group, terrain, new Float32Array(tint));
 }
 function updateChunksR(){
   const lo = Math.floor((headSR-950)/RSTEP), hi = Math.floor((headSR+950)/RSTEP);
@@ -1396,7 +1454,7 @@ function updateChunksR(){
   for(const [ci, g] of REAL.chunks){
     if(ci<lo || ci>hi){
       REAL.group.remove(g);
-      g.traverse(o=>{ if(o.geometry && o.geometry!==sleeperGeom && o.geometry!==railGeom && !SHARED_GEO.has(o.geometry)) o.geometry.dispose(); });
+      g.traverse(o=>{ if(o.geometry && o.geometry!==sleeperGeom && o.geometry!==railGeom && !SHARED_GEO.has(o.geometry)) o.geometry.dispose(); if(o.userData.ownMat){ if(o.material.map) o.material.map.dispose(); o.material.dispose(); } });
       REAL.chunks.delete(ci);
     }
   }
@@ -1445,6 +1503,7 @@ function setMode(m){
   procGroup.visible = m === 'dream';
   REAL.group.visible = m === 'real';
   document.getElementById('mapcredit').style.display = m === 'real' ? 'block' : 'none';
+  document.getElementById('nextpoi').style.display = m === 'real' ? 'block' : 'none';
   camInit = false;
   if(m === 'real'){ lastPoi = ''; announce({ name:'캐나다 로키 · 실제 노선', sub:'CPKC · LAKE LOUISE → CANMORE' }); }
   else lastBiome = -1;
@@ -1708,6 +1767,12 @@ function frame(now){
     for(const p of REAL.pois){ const d = Math.abs(p.s - headSR); if(d < nd){ nd = d; near = p; } }
     const key = (near && nd < 700) ? near.name : '';
     if(key !== lastPoi){ lastPoi = key; if(key) announce({ name: near.name + ' · ' + near.en, sub:'CANADIAN ROCKIES' }); }
+    let ahead = null, ad = 1e18;
+    for(const p of REAL.pois){ const d = (p.s - headSR) * realDir; if(d > 250 && d < ad){ ad = d; ahead = p; } }
+    let npTxt = ahead ? `다음 · ${ahead.name} ${ahead.en} — ${(ad/1000).toFixed(1)} km`
+      : (realDir > 0 ? '종점 · 캔모어 Canmore' : '종점 · 레이크 루이스 Lake Louise');
+    npTxt += `<br>레이크 루이스 ——— ${Math.round(headSR / REAL.total * 100)}% ——— 캔모어`;
+    if(npTxt !== lastNpTxt){ lastNpTxt = npTxt; document.getElementById('nextpoi').innerHTML = npTxt; }
   } else {
     const bi = biomeIndexAt3(headS);
     if(bi !== lastBiome){ lastBiome = bi; announce(biomeAt3(headS)); markMapChip(); }
