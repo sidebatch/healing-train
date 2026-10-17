@@ -1546,7 +1546,7 @@ function announce(b){
 document.getElementById('playBtn').addEventListener('click', e=>{
   playing=!playing; e.target.textContent = playing? "멈추기" : "계속 가기";
 });
-const speeds=[1,0.5,1.7]; let speedIdx=0;
+const speeds=[1,0.5,1.7,3,5,8]; let speedIdx=0;
 document.getElementById('speedBtn').addEventListener('click', e=>{
   speedIdx=(speedIdx+1)%speeds.length; speedMul=speeds[speedIdx];
   e.target.textContent = "속도 "+speedMul+"배";
