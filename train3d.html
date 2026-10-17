@@ -631,7 +631,7 @@ function buildChunk(ci){
     const by = _tp.y + 0.07 - (bz && s > bz[0]-2 && s < bz[1]+2 ? 1.5 : 0); // 교량 구간 자갈은 다리 아래로 숨김
     bPos.push(_tp.x+px*3.6, by, _tp.z+pz*3.6, _tp.x-px*3.6, by, _tp.z-pz*3.6);
     bUv.push(0, s/6, 1, s/6);
-    if(i<steps){ const a=i*2; bIdx.push(a, a+1, a+2, a+1, a+3, a+2); }
+    if(i<steps){ const a=i*2; bIdx.push(a, a+2, a+1, a+1, a+2, a+3); }
   }
   const bg = new THREE.BufferGeometry();
   bg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(bPos), 3));
@@ -1352,7 +1352,7 @@ function buildChunkR(ci){
   }
   for(let r=0;r<rowsN-1;r++) for(let c=0;c<colsN-1;c++){
     const a = r*colsN+c, b = a+1, d = a+colsN, e = d+1;
-    idx.push(a, d, b, b, d, e);
+    idx.push(a, b, d, b, e, d);
   }
   const tg = new THREE.BufferGeometry();
   tg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
@@ -1371,7 +1371,7 @@ function buildChunkR(ci){
     const f = pathFrameR(s), ty = trackYAt(s);
     bPos.push(f.x + f.px*3.6, ty+0.07, f.z + f.pz*3.6, f.x - f.px*3.6, ty+0.07, f.z - f.pz*3.6);
     bUv.push(0, s/6, 1, s/6);
-    if(i<stepsB){ const a=i*2; bIdx.push(a, a+1, a+2, a+1, a+3, a+2); }
+    if(i<stepsB){ const a=i*2; bIdx.push(a, a+2, a+1, a+1, a+2, a+3); }
   }
   const bg = new THREE.BufferGeometry();
   bg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(bPos), 3));
