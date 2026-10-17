@@ -1,7 +1,9 @@
-const CACHE = 'healing-train-v2';
+const CACHE = 'healing-train-v3';
 const CORE = [
   './', './index.html', './train3d.html', './iso.html', './side-view.html',
-  './assets/three.min.js', './assets/RGBELoader.js', './assets/sky_day.hdr', './assets/sky_sunset.hdr', './manifest.json',
+  './assets/three.min.js', './assets/RGBELoader.js', './assets/GLTFLoader.js', './assets/sky_day.hdr', './assets/sky_sunset.hdr',
+  './assets/models/pine-tree.glb', './assets/models/tree-leafy.glb', './assets/models/rock.glb', './assets/models/bush.glb', './assets/models/house.glb', './assets/models/house-2.glb',
+  './manifest.json',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'
 ];
 self.addEventListener('install', e => {

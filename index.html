@@ -60,6 +60,7 @@
 
 <script src="assets/three.min.js"></script>
 <script src="assets/RGBELoader.js"></script>
+<script src="assets/GLTFLoader.js"></script>
 <script>
 "use strict";
 const errBox = document.getElementById('err');
@@ -498,6 +499,64 @@ function buildHouse(variant){
   return g;
 }
 
+/* ================= 실제 모델 (Quaternius CC0) ================= */
+const modelMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0.0 });
+const MODELS = {};
+let modelsSettled = false;
+function bakeModel(root, targetH){
+  root.updateMatrixWorld(true);
+  const parts = [];
+  root.traverse(o=>{
+    if(o.isMesh){
+      let g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      g.applyMatrix4(o.matrixWorld);
+      const cnt = g.attributes.position.count;
+      const col = new Float32Array(cnt*3);
+      const c = (o.material && o.material.color) ? o.material.color : { r:1, g:1, b:1 };
+      for(let i=0;i<cnt;i++){ col[i*3]=c.r; col[i*3+1]=c.g; col[i*3+2]=c.b; }
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      parts.push(g);
+    }
+  });
+  let total = 0; for(const g of parts) total += g.attributes.position.count;
+  const pos = new Float32Array(total*3), nor = new Float32Array(total*3), colA = new Float32Array(total*3);
+  let off = 0;
+  for(const g of parts){
+    pos.set(g.attributes.position.array, off*3);
+    nor.set(g.attributes.normal.array, off*3);
+    colA.set(g.attributes.color.array, off*3);
+    off += g.attributes.position.count;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colA, 3));
+  geo.computeBoundingBox();
+  const bb = geo.boundingBox, size = new THREE.Vector3(), ctr = new THREE.Vector3();
+  bb.getSize(size); bb.getCenter(ctr);
+  geo.translate(-ctr.x, -bb.min.y, -ctr.z);
+  const s = targetH / Math.max(size.y, 0.001);
+  geo.scale(s, s, s);
+  geo.computeBoundingBox();
+  return geo;
+}
+if(THREE.GLTFLoader){
+  const gl = new THREE.GLTFLoader();
+  const defs = { pine:['pine-tree.glb', 6], leafy:['tree-leafy.glb', 5.2], rock:['rock.glb', 1.5], bush:['bush.glb', 1.4], house:['house.glb', 6.2], house2:['house-2.glb', 8.2] };
+  let pending = Object.keys(defs).length;
+  const done = ()=>{ if(--pending === 0) modelsSettled = true; };
+  for(const k in defs){
+    gl.load('assets/models/' + defs[k][0], g=>{ MODELS[k] = bakeModel(g.scene, defs[k][1]); SHARED_GEO.add(MODELS[k]); done(); }, undefined, done);
+  }
+  setTimeout(()=>{ modelsSettled = true; }, 3500);
+} else modelsSettled = true;
+const MODEL_FOR = { pine:'pine', pineSnow:'pine', round:'leafy', rock:'rock', bush:'bush' };
+function buildModelHouse(v){
+  const m = new THREE.Mesh(v? MODELS.house2 : MODELS.house, modelMat);
+  m.castShadow = true; m.receiveShadow = true;
+  const g = new THREE.Group(); g.add(m); return g;
+}
+
 /* ================= chunks ================= */
 const CHUNK = 260;
 const chunks = new Map();
@@ -643,7 +702,8 @@ function buildChunk(ci){
   for(const type of Object.keys(plan)){
     const cnt = plan[type];
     if(!cnt) continue;
-    const inst = new THREE.InstancedMesh(GEOMS[type], foliageMat, cnt);
+    const mk = modelsSettled && MODEL_FOR[type] && MODELS[MODEL_FOR[type]];
+    const inst = new THREE.InstancedMesh(mk? MODELS[mk] : GEOMS[type], mk? modelMat : foliageMat, cnt);
     let placed = 0, guard = 0, lastX = null, lastZ = 0;
     while(placed < cnt && guard++ < cnt*30){
       let x, z;
@@ -684,7 +744,8 @@ function buildChunk(ci){
     if(bz && hx > bz[0]-8 && hx < bz[1]+8) continue; // 교량 구간엔 집 없음
     const side = clustered? vSide : (rnd()<0.5? -1: 1);
     const hz = latAt(hx) + side*(clustered? 23 + (i%2)*14 + rnd()*5 : 26 + rnd()*70);
-    const house = buildHouse(Math.floor(rnd()*2));
+    const hv = Math.floor(rnd()*2);
+    const house = (modelsSettled && MODELS.house && MODELS.house2) ? buildModelHouse(hv) : buildHouse(hv);
     house.position.set(hx, groundH(hx,hz)-0.05, hz);
     house.rotation.y = (side<0? Math.PI : 0) + (rnd()-0.5)*0.7 + Math.PI/4*0;
     house.rotation.y += Math.atan2(-(latAt(hx+4)-latAt(hx-4)), 8)*0; // 선로 방향 대략 맞춤 (미세)
@@ -1261,7 +1322,7 @@ function updateCamera(dt, t){
 }
 
 /* HDRI 환경광이 너무 세지 않게 */
-[terrainMat, ballastMat, foliageMat, mesaMat, ridgeMat, waterMat, deckMat, iceMat, ...fieldMats].forEach(m=>{ m.envMapIntensity = 0.5; });
+[terrainMat, ballastMat, foliageMat, mesaMat, ridgeMat, waterMat, deckMat, iceMat, modelMat, ...fieldMats].forEach(m=>{ m.envMapIntensity = 0.5; });
 
 /* ================= main loop ================= */
 const winDay = new THREE.Color(0x2b3e4f), winNight = new THREE.Color(0xffca7a), _wc = new THREE.Color();
@@ -1272,7 +1333,7 @@ function frame(now){
   const speed = 15 * speedMul;
   if(playing){ headS += speed*dt; elapsed += dt; }
 
-  updateChunks();
+  if(modelsSettled) updateChunks();
   placeTrain();
   if(playing){
     const wAng = speed*dt/0.48;
