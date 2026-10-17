@@ -1284,12 +1284,14 @@ function loadSatTexture(ci, group, terrainMesh, tintArr){
   canvas.width = tilesX*256*K; canvas.height = tilesY*256*K;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#5d7350'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  try{ ctx.filter = 'saturate(1.18) contrast(1.06)'; }catch(e){}
   let remaining = tilesX*tilesY, loaded = 0, settled = false;
   const finish = ()=>{
     if(settled) return; settled = true;
     if(loaded === 0 || !REAL.chunks.has(ci)){ refreshSatStat(); return; }
     const tex = new THREE.CanvasTexture(canvas);
     tex.anisotropy = 4;
+    tex.encoding = THREE.sRGBEncoding;
     terrainMesh.material.map = tex;
     terrainMesh.material.needsUpdate = true;
     terrainMesh.geometry.setAttribute('color', new THREE.BufferAttribute(tintArr, 3));
@@ -1360,7 +1362,7 @@ function buildChunkR(ci){
   tg.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvA), 2));
   tg.setIndex(idx); tg.computeVertexNormals();
   const terrain = new THREE.Mesh(tg, new THREE.MeshStandardMaterial({ vertexColors:true, roughness:1, metalness:0 }));
-  terrain.material.envMapIntensity = 0.5;
+  terrain.material.envMapIntensity = 0.35;
   terrain.userData.ownMat = true;
   terrain.receiveShadow = true; terrain.frustumCulled = false;
   group.add(terrain);
