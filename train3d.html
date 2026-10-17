@@ -1270,7 +1270,7 @@ const SAT = { started:0, applied:0, tilesLoaded:0, tilesErr:0 };
 function refreshSatStat(){
   const el = document.getElementById('satstat');
   if(!el) return;
-  if(SAT.applied > 0) el.textContent = ` · 위성 지면 적용됨 (타일 ${SAT.tilesLoaded}장)`;
+  if(SAT.applied > 0) el.textContent = ` · 위성 지면 적용됨 (타일 ${SAT.tilesLoaded}장) · 빌드 D2`;
   else if(SAT.started > 0 && SAT.tilesLoaded === 0 && SAT.tilesErr > 0) el.textContent = ' · 위성 지면 실패 (타일 응답 오류)';
   else el.textContent = ' · 위성 지면 받는 중…';
 }
@@ -1285,10 +1285,20 @@ function loadSatTexture(ci, group, terrainMesh, tintArr){
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#5d7350'; ctx.fillRect(0, 0, canvas.width, canvas.height);
   try{ ctx.filter = 'saturate(1.18) contrast(1.06)'; }catch(e){}
+  const paintProbe = () => {
+    try{ ctx.filter = 'none'; }catch(e){}
+    ctx.lineWidth = 10; ctx.strokeStyle = '#ff2020';
+    ctx.strokeRect(5, 5, canvas.width-10, canvas.height-10);
+    const cols = ['#000000', '#ffffff', '#ff0000', '#00c000', '#2040ff', '#51683f'];
+    for(let i=0;i<cols.length;i++){ ctx.fillStyle = cols[i]; ctx.fillRect(14 + i*36, 14, 32, 32); }
+    ctx.fillStyle = '#ff2020'; ctx.font = 'bold 44px sans-serif';
+    ctx.fillText('C' + ci, 16, canvas.height - 18);
+  };
   let remaining = tilesX*tilesY, loaded = 0, settled = false;
   const finish = ()=>{
     if(settled) return; settled = true;
     if(loaded === 0 || !REAL.chunks.has(ci)){ refreshSatStat(); return; }
+    paintProbe();
     const tex = new THREE.CanvasTexture(canvas);
     tex.anisotropy = 4;
     tex.encoding = THREE.sRGBEncoding;
