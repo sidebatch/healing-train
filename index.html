@@ -55,6 +55,7 @@
   <button id="playBtn">멈추기</button>
   <button id="camBtn">카메라: 영화</button>
   <button id="speedBtn">속도 1배</button>
+  <button id="trainBtn">기차: 기본</button>
   <button id="soundBtn">소리 켜기</button>
   <span id="clock">00:00</span>
 </div>
@@ -1076,6 +1077,7 @@ const wheelGeom = new THREE.CylinderGeometry(0.48, 0.48, 0.2, 14);
 wheelGeom.rotateZ(Math.PI/2);
 const trainWheels = [];
 let headlight = null, locoStack = new THREE.Vector3();
+const carSideMats = [], carCanvasTex = [], carStrips = [];
 
 function buildCar(idx){
   const isLoco = idx===0;
@@ -1083,6 +1085,7 @@ function buildCar(idx){
   const g = new THREE.Group();
   const sideTex = carSideTexture(TRAIN_COLORS[idx], isLoco);
   const sideMat = new THREE.MeshStandardMaterial({ map: sideTex, roughness:0.38, metalness:0.35 });
+  carSideMats.push(sideMat); carCanvasTex.push(sideTex);
   const paintMat = new THREE.MeshStandardMaterial({ color: TRAIN_COLORS[idx], roughness:0.42, metalness:0.3 });
   const frontMat = isLoco
     ? new THREE.MeshStandardMaterial({ map: locoFrontTexture(), roughness:0.4, metalness:0.3 })
@@ -1122,7 +1125,7 @@ function buildCar(idx){
     const strip = new THREE.Mesh(new THREE.PlaneGeometry(len*0.8, 0.85), winMat);
     strip.position.set(sx*(wid/2 + 0.02), 2.72, 0);
     strip.rotation.y = sx>0? Math.PI/2 : -Math.PI/2;
-    g.add(strip);
+    g.add(strip); carStrips.push(strip);
   }
   // 대차 + 바퀴
   for(const bz of [len/2 - 2.1, -(len/2 - 2.1)]){
@@ -1146,6 +1149,36 @@ const cars = [];
     off += c.len/2;
     scene.add(c.group);
   }
+}
+/* 기차 사진 도장 3종 (생성 사진): 옆면에 입히고 창문 띠는 숨김 */
+const LIVERIES = [
+  { name: '클래식', loco: 'assets/train_green_loco.jpg', car: 'assets/train_green_car.jpg' },
+  { name: '익스프레스', loco: 'assets/train_red_loco.jpg', car: 'assets/train_red_car.jpg' },
+  { name: '빈티지', loco: 'assets/train_blue_loco.jpg', car: 'assets/train_blue_car.jpg' }
+];
+const liveryTex = LIVERIES.map(()=>({}));
+let liveryIdx = -1, liveryPos = 3;
+function applyLivery(i){
+  liveryIdx = i; liveryPos = i < 0 ? 3 : i;
+  for(let c=0;c<carSideMats.length;c++){
+    carSideMats[c].map = i < 0 ? carCanvasTex[c] : (c === 0 ? liveryTex[i].loco : liveryTex[i].car);
+    carSideMats[c].needsUpdate = true;
+  }
+  for(const s of carStrips) s.visible = i < 0;
+  const btn = document.getElementById('trainBtn');
+  if(btn) btn.textContent = '기차: ' + (i < 0 ? '기본' : LIVERIES[i].name);
+}
+{
+  let loadedCnt = 0;
+  LIVERIES.forEach((L, i)=>{
+    for(const kind of ['loco', 'car']){
+      new THREE.TextureLoader().load(L[kind], t=>{
+        t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
+        liveryTex[i][kind] = t;
+        if(++loadedCnt === 6) applyLivery(0);
+      }, undefined, ()=>{});
+    }
+  });
 }
 const _pp = new THREE.Vector3(), _pa = new THREE.Vector3();
 function placeTrain(){
@@ -1593,7 +1626,7 @@ function updateCameraR(dt, t){
     _want.copy(_ctr).addScaledVector(_rgt, 23); _want.y = _ctr.y + 5;
     _look.copy(_ctr); _look.y += 2.4;
   } else if(camMode===2){
-    _want.copy(locoP).addScaledVector(_fwd, 5.4); _want.y = locoP.y + 3.4;
+    _want.copy(locoP).addScaledVector(_fwd, 7.0); _want.y = locoP.y + 3.35;
     pathPointR(headSR + realDir*55, _look); _look.y += 1.2;
     snap = 14;
   } else {
@@ -1632,6 +1665,11 @@ document.getElementById('playBtn').addEventListener('click', e=>{
   playing=!playing; e.target.textContent = playing? "멈추기" : "계속 가기";
 });
 const speeds=[1,0.5,1.7,3,5,8]; let speedIdx=0;
+document.getElementById('trainBtn').addEventListener('click', ()=>{
+  const order = [0, 1, 2, -1];
+  liveryPos = (liveryPos + 1) % order.length;
+  if(order[liveryPos] < 0 || (liveryTex[order[liveryPos]].loco && liveryTex[order[liveryPos]].car)) applyLivery(order[liveryPos]);
+});
 document.getElementById('speedBtn').addEventListener('click', e=>{
   speedIdx=(speedIdx+1)%speeds.length; speedMul=speeds[speedIdx];
   e.target.textContent = "속도 "+speedMul+"배";
@@ -1769,7 +1807,7 @@ function updateCamera(dt, t){
     _want.copy(_ctr).addScaledVector(_rgt, 23); _want.y = _ctr.y + 5;
     _look.copy(_ctr); _look.y += 2.4;
   } else if(camMode===2){ // 기관실
-    _want.copy(locoP).addScaledVector(_fwd, 5.4); _want.y = locoP.y + 3.4;
+    _want.copy(locoP).addScaledVector(_fwd, 7.0); _want.y = locoP.y + 3.35;
     pathPoint(headS + 55, _look); _look.y += 1.2;
     snap = 14;
   } else { // 위에서
