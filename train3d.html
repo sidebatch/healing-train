@@ -201,6 +201,20 @@ if(THREE.RGBELoader){
     }, undefined, ()=>{});
   }
 }
+/* 사진 파노라마 배경 (생성 이미지, 록키 계곡): 초원·숲 바이옴에서 하늘 사진 대신 배경 전체를 사진으로 */
+let panoTex = null;
+const panoMesh = new THREE.Mesh(
+  new THREE.CylinderGeometry(1700, 1700, 1500, 40, 1, true),
+  new THREE.MeshBasicMaterial({ side: THREE.BackSide, fog: false, depthWrite: false })
+);
+panoMesh.visible = false; panoMesh.frustumCulled = false; panoMesh.renderOrder = -10;
+scene.add(panoMesh);
+new THREE.TextureLoader().load('assets/pano_rockies.jpg', t=>{
+  t.encoding = THREE.sRGBEncoding;
+  t.wrapS = THREE.MirroredRepeatWrapping; t.repeat.x = 2; t.anisotropy = 8;
+  panoMesh.material.map = t; panoMesh.material.needsUpdate = true;
+  panoTex = t;
+}, undefined, ()=>{});
 const _skyTop = new THREE.Color(), _skyBot = new THREE.Color(), _white = new THREE.Color(0xffffff), _black = new THREE.Color(0x000000);
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 2400);
 camera.position.set(-30, 14, 60);
@@ -1729,14 +1743,28 @@ function frame(now){
   const wantSky = mode === 'real' ? 'day'
     : pal.night > 0.6 ? 'gradient'
     : (biomeAt3(headS).sub === 'SUNSET' || biomeAt3(headS).sub === 'DESERT') ? 'sunset' : 'day';
-  if(wantSky !== skyMode){
-    if(wantSky === 'gradient'){
-      scene.background = bgColor; scene.environment = null; skyDome.visible = true; skyMode = 'gradient';
-    } else if(skyTexs[wantSky]){
-      scene.background = skyTexs[wantSky]; skyDome.visible = false;
-      if(!envCache[wantSky]) envCache[wantSky] = pmrem.fromEquirectangular(skyTexs[wantSky]).texture;
-      scene.environment = envCache[wantSky];
-      skyMode = wantSky;
+  const _sub = mode === 'dream' ? biomeAt3(headS).sub : '';
+  const wantPano = !!panoTex && pal.night <= 0.6 && (_sub === 'MEADOW' || _sub === 'FOREST');
+  if(wantPano){
+    panoMesh.visible = true;
+    panoMesh.position.set(camera.position.x, camera.position.y - 40, camera.position.z);
+    if(skyMode !== 'pano'){
+      scene.background = bgColor; bgColor.set(0x9db9dc);
+      skyDome.visible = false;
+      if(skyTexs.day){ if(!envCache.day) envCache.day = pmrem.fromEquirectangular(skyTexs.day).texture; scene.environment = envCache.day; }
+      skyMode = 'pano';
+    }
+  } else {
+    if(panoMesh.visible){ panoMesh.visible = false; if(skyMode === 'pano') skyMode = ''; }
+    if(wantSky !== skyMode){
+      if(wantSky === 'gradient'){
+        scene.background = bgColor; scene.environment = null; skyDome.visible = true; skyMode = 'gradient';
+      } else if(skyTexs[wantSky]){
+        scene.background = skyTexs[wantSky]; skyDome.visible = false;
+        if(!envCache[wantSky]) envCache[wantSky] = pmrem.fromEquirectangular(skyTexs[wantSky]).texture;
+        scene.environment = envCache[wantSky];
+        skyMode = wantSky;
+      }
     }
   }
   if(skyMode === 'gradient'){
