@@ -229,6 +229,22 @@ for(const [gsub, gfile, grx, gry] of [['MEADOW', 'assets/ground_meadow.jpg', 10,
 let bbTex = null, bbMat = null;
 const bbGeom = new THREE.PlaneGeometry(0.98, 2); bbGeom.translate(0, 1, 0);
 const BB_SET = new Map();
+let houseTex = null, houseMat = null;
+const houseGeom = new THREE.PlaneGeometry(2.98, 2); houseGeom.translate(0, 1, 0);
+new THREE.TextureLoader().load('assets/prop_house.png', t=>{
+  t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
+  houseMat = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 });
+  houseTex = t;
+}, undefined, ()=>{});
+/* 밭 사진 질감: 단색 밭 평면을 실제 작물 사진으로 */
+new THREE.TextureLoader().load('assets/ground_field.jpg', t=>{
+  t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; t.anisotropy = 8;
+  const reps = [[2, 1.25], [3, 1.9], [1.5, 0.94]], tints = [0xffffff, 0xf2e8d5, 0xe2d8c2];
+  fieldMats.forEach((m, i)=>{
+    const tc = t.clone(); tc.needsUpdate = true; tc.repeat.set(reps[i][0], reps[i][1]); tc.offset.set(i*0.37, i*0.53);
+    m.map = tc; m.color.set(tints[i]); m.needsUpdate = true;
+  });
+}, undefined, ()=>{});
 new THREE.TextureLoader().load('assets/prop_pine.png', t=>{
   t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
   bbMat = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 });
@@ -496,7 +512,7 @@ const UMB_GEOMS = [umbrellaGeom(0xe2574c), umbrellaGeom(0x3e7dc4), umbrellaGeom(
 const GEOMS = { pine: pineGeom(false), pineSnow: pineGeom(true), round: roundGeom(), palm: palmGeom(), cactus: cactusGeom(), rock: rockGeom(), bush: bushGeom(),
   lighthouse: lighthouseGeom(), boat: boatGeom(), snowman: snowmanGeom(), bale: baleGeom(), signal: signalGeom(), lamp: lampGeom() };
 const poleGeomInst = poleGeom();
-const SHARED_GEO = new Set([...Object.values(GEOMS), poleGeomInst, ...UMB_GEOMS, bbGeom]);
+const SHARED_GEO = new Set([...Object.values(GEOMS), poleGeomInst, ...UMB_GEOMS, bbGeom, houseGeom]);
 const ridgeGeomInst = ridgeGeom();
 SHARED_GEO.add(ridgeGeomInst);
 const ridgeMat = new THREE.MeshStandardMaterial({ vertexColors:true, color:0x8fb98a, roughness:1, flatShading:true });
@@ -790,13 +806,28 @@ function buildChunk(ci){
     }
     bb.count = placed; bb.frustumCulled = false;
     group.add(bb);
-    BB_SET.set(ci, { im: bb, items });
+    const lst0 = BB_SET.get(ci) || []; lst0.push({ im: bb, items }); BB_SET.set(ci, lst0);
   }
 
   // 집 (눈 마을·밤에는 마을처럼 모여서)
   const nH = bName==='MEADOW'?2 : bName==='SNOW'?9 : bName==='NIGHT'?5 : bName==='SUNSET'?2 : bName==='COAST'?1 : 0;
   const vX = ci*CHUNK + 60 + rnd()*140, vSide = rnd()<0.5? -1: 1;
-  for(let i=0;i<nH;i++){
+  let skipHouses3D = false;
+  if(houseTex && bName==='MEADOW' && nH > 0){
+    skipHouses3D = true;
+    const hb = new THREE.InstancedMesh(houseGeom, houseMat, nH);
+    const items = [];
+    for(let i=0;i<nH;i++){
+      const hx = ci*CHUNK + 30 + rnd()*(CHUNK-60);
+      const side = rnd()<0.5? -1: 1;
+      const hz = latAt(hx) + side*(26 + rnd()*70);
+      items.push({ x: hx, y: groundH(hx, hz) - 0.05, z: hz, h: 7 + rnd()*1.6, flip: rnd() < 0.5 });
+    }
+    hb.count = items.length; hb.frustumCulled = false;
+    group.add(hb);
+    const lst1 = BB_SET.get(ci) || []; lst1.push({ im: hb, items }); BB_SET.set(ci, lst1);
+  }
+  for(let i=0;i<(skipHouses3D? 0 : nH);i++){
     const clustered = bName==='SNOW' || bName==='NIGHT';
     const hx = clustered? vX + (i - (nH-1)/2)*12 + (rnd()-0.5)*5 : ci*CHUNK + 30 + rnd()*(CHUNK-60);
     if(bz && hx > bz[0]-8 && hx < bz[1]+8) continue; // 교량 구간엔 집 없음
@@ -1773,16 +1804,18 @@ function frame(now){
   if(mode === 'real' && REAL.ready){ updateChunksR(); placeTrainR(); }
   else { if(modelsSettled) updateChunks(); placeTrain(); }
   if(mode === 'dream' && bbMat){
-    for(const ent of BB_SET.values()){
-      for(let i=0;i<ent.items.length;i++){
-        const it = ent.items[i];
-        _dummy.position.set(it.x, it.y, it.z);
-        _dummy.rotation.set(0, Math.atan2(camera.position.x - it.x, camera.position.z - it.z), 0);
-        const sc = it.h/2; _dummy.scale.set(sc, sc, sc);
-        _dummy.updateMatrix();
-        ent.im.setMatrixAt(i, _dummy.matrix);
+    for(const lst of BB_SET.values()){
+      for(const ent of lst){
+        for(let i=0;i<ent.items.length;i++){
+          const it = ent.items[i];
+          _dummy.position.set(it.x, it.y, it.z);
+          _dummy.rotation.set(0, Math.atan2(camera.position.x - it.x, camera.position.z - it.z), 0);
+          const sc = it.h/2; _dummy.scale.set(sc * (it.flip? -1 : 1), sc, sc);
+          _dummy.updateMatrix();
+          ent.im.setMatrixAt(i, _dummy.matrix);
+        }
+        ent.im.instanceMatrix.needsUpdate = true;
       }
-      ent.im.instanceMatrix.needsUpdate = true;
     }
     _dummy.rotation.set(0,0,0); _dummy.scale.set(1,1,1);
   }
