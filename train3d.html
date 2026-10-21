@@ -1073,39 +1073,94 @@ const TRAIN_COLORS = [0x31556e, 0x8a4b38, 0x4a6741, 0x6b5b8f, 0x8a6d3b, 0x546e7a
 const winMat = new THREE.MeshBasicMaterial({ map: windowStripTex, transparent:true, color: 0x2b3e4f, side: THREE.DoubleSide });
 const roofMat = new THREE.MeshStandardMaterial({ color:0x2e3134, roughness:0.6, metalness:0.3 });
 const darkMetal = new THREE.MeshStandardMaterial({ color:0x1d2126, roughness:0.55, metalness:0.5 });
+const glassMat = new THREE.MeshStandardMaterial({ color:0x1d2a38, roughness:0.18, metalness:0.4 });
+const bellowsMat = new THREE.MeshStandardMaterial({ color:0x14161a, roughness:0.92, metalness:0.05 });
+const hubMat = new THREE.MeshStandardMaterial({ color:0x43484f, roughness:0.4, metalness:0.6 });
+const hubGeom = new THREE.CylinderGeometry(0.17, 0.17, 0.27, 10); hubGeom.rotateZ(Math.PI/2);
+const coachGlassTex = canvasTex(1024, 96, (g,w,h)=>{
+  const grad = g.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0, "#31455c"); grad.addColorStop(1, "#182635");
+  g.fillStyle = grad; g.fillRect(0,0,w,h);
+  for(let i=0;i<6;i++){
+    const x = 26 + i*164, pw = 134;
+    const pg = g.createLinearGradient(0, 12, 0, 84);
+    pg.addColorStop(0, "#7d9db8"); pg.addColorStop(0.45, "#49657f"); pg.addColorStop(1, "#2b4257");
+    g.fillStyle = pg; g.fillRect(x, 13, pw, 70);
+    g.fillStyle = "rgba(255,255,255,.20)"; g.beginPath();
+    g.moveTo(x+8, 83); g.lineTo(x+58, 13); g.lineTo(x+86, 13); g.lineTo(x+36, 83); g.fill();
+    g.strokeStyle = "rgba(225,233,240,.9)"; g.lineWidth = 5; g.strokeRect(x, 13, pw, 70);
+  }
+});
+const coachGlassMat = new THREE.MeshStandardMaterial({ map: coachGlassTex, roughness:0.22, metalness:0.35 });
 const wheelGeom = new THREE.CylinderGeometry(0.48, 0.48, 0.2, 14);
 wheelGeom.rotateZ(Math.PI/2);
 const trainWheels = [];
 let headlight = null, locoStack = new THREE.Vector3();
-const carSideMats = [], carCanvasTex = [], carStrips = [];
+const trainPaint = [];
 
 function buildCar(idx){
   const isLoco = idx===0;
   const len = isLoco? 12.5 : 11, wid = 2.95;
   const g = new THREE.Group();
-  const sideTex = carSideTexture(TRAIN_COLORS[idx], isLoco);
-  const sideMat = new THREE.MeshStandardMaterial({ map: sideTex, roughness:0.38, metalness:0.35 });
-  carSideMats.push(sideMat); carCanvasTex.push(sideTex);
-  const paintMat = new THREE.MeshStandardMaterial({ color: TRAIN_COLORS[idx], roughness:0.42, metalness:0.3 });
-  const frontMat = isLoco
-    ? new THREE.MeshStandardMaterial({ map: locoFrontTexture(), roughness:0.4, metalness:0.3 })
-    : paintMat;
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(wid, 2.6, len),
-    [sideMat, sideMat, roofMat, darkMetal, frontMat, paintMat]
-  );
-  body.position.y = 2.3; body.castShadow = true;
-  g.add(body);
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(wid*0.9, 0.26, len*0.94), roofMat);
-  roof.position.y = 3.72; roof.castShadow = true; g.add(roof);
-  if(!isLoco){
-    const ac = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.22, 3.4), darkMetal);
-    ac.position.set(0, 3.92, 0.6); g.add(ac);
+  const bodyMat = new THREE.MeshStandardMaterial({ color: TRAIN_COLORS[idx], roughness:0.42, metalness:0.28 });
+  const accentMat = new THREE.MeshStandardMaterial({ color: 0xcfc9b8, roughness:0.5, metalness:0.2 });
+  trainPaint.push({ body: bodyMat, accent: accentMat, idx });
+  // 차체: 옆면 실루엣을 뽑아 만든 입체 (지붕 곡선 포함)
+  const s = new THREE.Shape();
+  if(isLoco){
+    s.moveTo(-len/2, 1.04); s.lineTo(len/2, 1.04); s.lineTo(len/2, 2.92);
+    s.lineTo(2.0, 2.92); s.lineTo(2.0, 3.74); s.lineTo(-2.4, 3.74); s.lineTo(-2.4, 2.88);
+    s.lineTo(-len/2, 2.88); s.lineTo(-len/2, 1.04);
   } else {
-    for(const dz of [-3.4, -4.3]){
-      const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.5, 8), darkMetal);
-      stack.position.set(0, 3.95, dz); g.add(stack);
+    s.moveTo(-len/2, 1.04); s.lineTo(len/2, 1.04); s.lineTo(len/2, 3.24);
+    s.quadraticCurveTo(0, 3.84, -len/2, 3.24); s.lineTo(-len/2, 1.04);
+  }
+  const bodyGeo = new THREE.ExtrudeGeometry(s, { depth: wid, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.04, bevelSegments: 1, steps: 1 });
+  bodyGeo.translate(0, 0, -wid/2); bodyGeo.rotateY(-Math.PI/2);
+  const body = new THREE.Mesh(bodyGeo, [bodyMat, roofMat]);
+  body.castShadow = true; g.add(body);
+  const AX = wid/2 + 0.075; // 옆면 부착물 중심 x
+  for(const sx of [-1, 1]){
+    if(isLoco){
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.15, 4.1), accentMat);
+      stripe.position.set(sx*AX, 2.02, 4.05); g.add(stripe);
+      const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.15, 3.3), accentMat);
+      stripe2.position.set(sx*AX, 2.0, -4.35); g.add(stripe2);
+      const grille = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.85, 2.7), darkMetal);
+      grille.position.set(sx*AX, 2.32, 4.05); g.add(grille);
+      const cabWin = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.72, 1.5), glassMat);
+      cabWin.position.set(sx*AX, 3.3, 0.55); g.add(cabWin);
+    } else {
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.045, 1.04, len*0.88), accentMat);
+      band.position.set(sx*(AX - 0.012), 2.62, 0); g.add(band);
+      const glass = new THREE.Mesh(new THREE.PlaneGeometry(len*0.84, 0.8), coachGlassMat);
+      glass.position.set(sx*(AX + 0.02), 2.64, 0);
+      glass.rotation.y = sx>0? Math.PI/2 : -Math.PI/2;
+      g.add(glass);
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, len*0.97), accentMat);
+      stripe.position.set(sx*AX, 1.9, 0); g.add(stripe);
+      for(const dz of [len/2 - 0.82, -(len/2 - 0.82)]){
+        const door = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.98, 1.02), bodyMat);
+        door.position.set(sx*AX, 2.05, dz); g.add(door);
+        const dwin = new THREE.Mesh(new THREE.BoxGeometry(0.056, 0.66, 0.58), glassMat);
+        dwin.position.set(sx*AX, 2.72, dz); g.add(dwin);
+      }
     }
+  }
+  if(!isLoco){
+    const ac = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.2, 3.2), roofMat);
+    ac.position.set(0, 3.62, 0.6); g.add(ac);
+  } else {
+    for(const dz of [3.6, 4.5]){
+      const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, 0.42, 8), darkMetal);
+      stack.position.set(0, 3.12, dz); g.add(stack);
+    }
+    for(const wx of [-0.72, 0.72]){
+      const shield = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.74, 0.05), glassMat);
+      shield.position.set(wx, 3.32, 2.06); g.add(shield);
+    }
+    const fgrille = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.8, 0.06), darkMetal);
+    fgrille.position.set(0, 1.78, len/2 + 0.04); g.add(fgrille);
     const lampGeo = new THREE.SphereGeometry(0.13, 8, 8);
     const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff3c4 });
     for(const lx of [-0.85, 0.85]){
@@ -1117,23 +1172,30 @@ function buildCar(idx){
     const tgt = new THREE.Object3D(); tgt.position.set(0, 0.8, len/2 + 42);
     g.add(tgt); headlight.target = tgt;
     g.add(headlight);
+    const tank = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.55, 3.6), darkMetal);
+    tank.position.set(0, 0.72, 0); g.add(tank);
   }
-  const under = new THREE.Mesh(new THREE.BoxGeometry(wid*0.78, 0.55, len*0.92), darkMetal);
-  under.position.y = 0.78; g.add(under);
-  // 창문 띠 (양옆)
-  for(const sx of [-1, 1]){
-    const strip = new THREE.Mesh(new THREE.PlaneGeometry(len*0.8, 0.85), winMat);
-    strip.position.set(sx*(wid/2 + 0.02), 2.72, 0);
-    strip.rotation.y = sx>0? Math.PI/2 : -Math.PI/2;
-    g.add(strip); carStrips.push(strip);
+  // 칸 사이 연결막 (벨로즈)
+  const bellowsEnds = isLoco? [-1] : [-1, 1];
+  for(const ez of bellowsEnds){
+    const bel = new THREE.Mesh(new THREE.BoxGeometry(1.75, 2.05, 0.3), bellowsMat);
+    bel.position.set(0, 2.12, ez*(len/2 + 0.07)); g.add(bel);
   }
-  // 대차 + 바퀴
+  // 하부 + 대차 + 바퀴 (옆에서 보이게)
+  const under = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, len*0.9), darkMetal);
+  under.position.y = 0.8; g.add(under);
   for(const bz of [len/2 - 2.1, -(len/2 - 2.1)]){
-    const bogie = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.42, 3.1), darkMetal);
-    bogie.position.set(0, 0.5, bz); g.add(bogie);
-    for(const wx of [-1.02, 1.02]) for(const wz of [-0.95, 0.95]){
+    const bogie = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.36, 3.0), darkMetal);
+    bogie.position.set(0, 0.52, bz); g.add(bogie);
+    for(const sx of [-1, 1]){
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.26, 3.0), darkMetal);
+      frame.position.set(sx*1.06, 0.64, bz); g.add(frame);
+    }
+    for(const wx of [-0.98, 0.98]) for(const wz of [-0.95, 0.95]){
       const wheel = new THREE.Mesh(wheelGeom, darkMetal);
       wheel.position.set(wx, 0.48, bz + wz);
+      const hub = new THREE.Mesh(hubGeom, hubMat);
+      wheel.add(hub);
       g.add(wheel); trainWheels.push(wheel);
     }
   }
@@ -1144,41 +1206,27 @@ const cars = [];
   let off = 0;
   for(let i=0;i<6;i++){
     const c = buildCar(i);
-    off += (i===0? 0 : 0.55) + c.len/2;
+    off += (i===0? 0 : 0.34) + c.len/2;
     cars.push({ ...c, centerOff: off });
     off += c.len/2;
     scene.add(c.group);
   }
 }
-/* 기차 사진 도장 3종 (생성 사진): 옆면에 입히고 창문 띠는 숨김 */
-const LIVERIES = [
-  { name: '클래식', loco: 'assets/train_green_loco.jpg', car: 'assets/train_green_car.jpg' },
-  { name: '익스프레스', loco: 'assets/train_red_loco.jpg', car: 'assets/train_red_car.jpg' },
-  { name: '빈티지', loco: 'assets/train_blue_loco.jpg', car: 'assets/train_blue_car.jpg' }
+/* 기차 도장 3종 (색상 스킴): 입체 모델의 차체·띠 색을 바꿈 */
+const SCHEMES = [
+  { name: '클래식', body: 0x2f5d3a, accent: 0xe7dcc0 },
+  { name: '익스프레스', body: 0xb3312c, accent: 0xc9ced4 },
+  { name: '빈티지', body: 0x27355e, accent: 0xe7dcc0 }
 ];
-const liveryTex = LIVERIES.map(()=>({}));
 let liveryIdx = -1, liveryPos = 3;
 function applyLivery(i){
   liveryIdx = i; liveryPos = i < 0 ? 3 : i;
-  for(let c=0;c<carSideMats.length;c++){
-    carSideMats[c].map = i < 0 ? carCanvasTex[c] : (c === 0 ? liveryTex[i].loco : liveryTex[i].car);
-    carSideMats[c].needsUpdate = true;
+  for(const p of trainPaint){
+    if(i < 0){ p.body.color.set(TRAIN_COLORS[p.idx]); p.accent.color.set(0xcfc9b8); }
+    else { p.body.color.set(SCHEMES[i].body); p.accent.color.set(SCHEMES[i].accent); }
   }
-  for(const s of carStrips) s.visible = i < 0;
   const btn = document.getElementById('trainBtn');
-  if(btn) btn.textContent = '기차: ' + (i < 0 ? '기본' : LIVERIES[i].name);
-}
-{
-  let loadedCnt = 0;
-  LIVERIES.forEach((L, i)=>{
-    for(const kind of ['loco', 'car']){
-      new THREE.TextureLoader().load(L[kind], t=>{
-        t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
-        liveryTex[i][kind] = t;
-        if(++loadedCnt === 6) applyLivery(0);
-      }, undefined, ()=>{});
-    }
-  });
+  if(btn) btn.textContent = '기차: ' + (i < 0 ? '기본' : SCHEMES[i].name);
 }
 const _pp = new THREE.Vector3(), _pa = new THREE.Vector3();
 function placeTrain(){
@@ -1189,7 +1237,7 @@ function placeTrain(){
     c.group.lookAt(_pa.x, _pa.y + TRACK_TOP, _pa.z);
   }
   const loco = cars[0];
-  loco.group.localToWorld(locoStack.set(0, 4.3, -3.4));
+  loco.group.localToWorld(locoStack.set(0, 3.45, 3.9));
 }
 
 /* ================= sky extras ================= */
@@ -1608,7 +1656,7 @@ function placeTrainR(){
     c.group.lookAt(_pa.x, _pa.y + TRACK_TOP, _pa.z);
   }
   const loco = cars[0];
-  loco.group.localToWorld(locoStack.set(0, 4.3, -3.4));
+  loco.group.localToWorld(locoStack.set(0, 3.45, 3.9));
 }
 function updateCameraR(dt, t){
   pathPointR(headSR - realDir*20, _ctr);
@@ -1668,7 +1716,7 @@ const speeds=[1,0.5,1.7,3,5,8]; let speedIdx=0;
 document.getElementById('trainBtn').addEventListener('click', ()=>{
   const order = [0, 1, 2, -1];
   liveryPos = (liveryPos + 1) % order.length;
-  if(order[liveryPos] < 0 || (liveryTex[order[liveryPos]].loco && liveryTex[order[liveryPos]].car)) applyLivery(order[liveryPos]);
+  applyLivery(order[liveryPos]);
 });
 document.getElementById('speedBtn').addEventListener('click', e=>{
   speedIdx=(speedIdx+1)%speeds.length; speedMul=speeds[speedIdx];

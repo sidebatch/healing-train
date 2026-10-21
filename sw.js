@@ -1,11 +1,10 @@
-const CACHE = 'healing-train-v11';
+const CACHE = 'healing-train-v12';
 const CORE = [
   './', './index.html', './train3d.html', './iso.html', './side-view.html',
   './assets/three.min.js', './assets/RGBELoader.js', './assets/GLTFLoader.js', './assets/sky_day.hdr', './assets/sky_sunset.hdr',
   './assets/models/pine-tree.glb', './assets/models/tree-leafy.glb', './assets/models/rock.glb', './assets/models/bush.glb', './assets/models/house.glb', './assets/models/house-2.glb',
   './assets/realroute/meta.json', './assets/realroute/samples.bin', './assets/realroute/grid.bin',
   './assets/pano_rockies.jpg', './assets/ground_meadow.jpg', './assets/ground_forest.jpg', './assets/prop_pine.png', './assets/prop_house.png', './assets/ground_field.jpg',
-  './assets/train_green_loco.jpg', './assets/train_green_car.jpg', './assets/train_red_loco.jpg', './assets/train_red_car.jpg', './assets/train_blue_loco.jpg', './assets/train_blue_car.jpg',
   './manifest.json',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'
 ];
