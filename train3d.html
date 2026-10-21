@@ -1096,16 +1096,51 @@ const wheelGeom = new THREE.CylinderGeometry(0.48, 0.48, 0.2, 14);
 wheelGeom.rotateZ(Math.PI/2);
 const trainWheels = [];
 let headlight = null, locoStack = new THREE.Vector3();
-const trainPaint = [];
 
-function buildCar(idx){
+/* ================= 기차 3종 (입체 모델) ================= */
+const TYPE_NAMES = ['클래식', '익스프레스', '빈티지'];
+function addCoupler(g, len, ez){ // 아래쪽 쇠 연결기
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.22, 0.46), darkMetal);
+  bar.position.set(0, 0.98, ez*(len/2 + 0.12)); g.add(bar);
+}
+function addGangway(g, len, ez){ // 주름 연결막 (벨로즈): 끝면을 통째로 감싸 맞물림
+  const back = new THREE.Mesh(new THREE.BoxGeometry(2.34, 2.14, 0.34), bellowsMat);
+  back.position.set(0, 2.12, ez*(len/2 + 0.08)); g.add(back);
+  for(let k=0;k<4;k++){
+    const rib = new THREE.Mesh(new THREE.BoxGeometry(2.52, 2.32, 0.075), bellowsMat);
+    rib.position.set(0, 2.12, ez*(len/2 + 0.03 + k*0.062)); g.add(rib);
+  }
+  addCoupler(g, len, ez);
+}
+function addBogies(g, len, wheels, skirtMat){
+  const under = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, len*0.9), darkMetal);
+  under.position.y = 0.8; g.add(under);
+  for(const bz of [len/2 - 2.1, -(len/2 - 2.1)]){
+    const bogie = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.36, 3.0), darkMetal);
+    bogie.position.set(0, 0.52, bz); g.add(bogie);
+    for(const sx of [-1, 1]){
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.26, 3.0), darkMetal);
+      frame.position.set(sx*1.06, 0.64, bz); g.add(frame);
+      if(skirtMat){
+        const sk = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.58, 3.5), skirtMat);
+        sk.position.set(sx*1.44, 0.74, bz); g.add(sk);
+      }
+    }
+    for(const wx of [-0.98, 0.98]) for(const wz of [-0.95, 0.95]){
+      const wheel = new THREE.Mesh(wheelGeom, darkMetal);
+      wheel.position.set(wx, 0.48, bz + wz);
+      wheel.add(new THREE.Mesh(hubGeom, hubMat));
+      g.add(wheel); wheels.push(wheel); trainWheels.push(wheel);
+    }
+  }
+}
+function buildClassic(idx, wheels){
   const isLoco = idx===0;
   const len = isLoco? 12.5 : 11, wid = 2.95;
   const g = new THREE.Group();
+  let light = null;
   const bodyMat = new THREE.MeshStandardMaterial({ color: TRAIN_COLORS[idx], roughness:0.42, metalness:0.28 });
   const accentMat = new THREE.MeshStandardMaterial({ color: 0xcfc9b8, roughness:0.5, metalness:0.2 });
-  trainPaint.push({ body: bodyMat, accent: accentMat, idx });
-  // 차체: 옆면 실루엣을 뽑아 만든 입체 (지붕 곡선 포함)
   const s = new THREE.Shape();
   if(isLoco){
     s.moveTo(-len/2, 1.04); s.lineTo(len/2, 1.04); s.lineTo(len/2, 2.92);
@@ -1119,7 +1154,7 @@ function buildCar(idx){
   bodyGeo.translate(0, 0, -wid/2); bodyGeo.rotateY(-Math.PI/2);
   const body = new THREE.Mesh(bodyGeo, [bodyMat, roofMat]);
   body.castShadow = true; g.add(body);
-  const AX = wid/2 + 0.075; // 옆면 부착물 중심 x
+  const AX = wid/2 + 0.075;
   for(const sx of [-1, 1]){
     if(isLoco){
       const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.15, 4.1), accentMat);
@@ -1167,67 +1202,203 @@ function buildCar(idx){
       const lamp = new THREE.Mesh(lampGeo, lampMat);
       lamp.position.set(lx, 2.62, len/2 + 0.06); g.add(lamp);
     }
-    headlight = new THREE.SpotLight(0xffe6b0, 0, 90, 0.42, 0.55, 1);
-    headlight.position.set(0, 2.6, len/2);
+    light = new THREE.SpotLight(0xffe6b0, 0, 90, 0.42, 0.55, 1);
+    light.position.set(0, 2.6, len/2);
     const tgt = new THREE.Object3D(); tgt.position.set(0, 0.8, len/2 + 42);
-    g.add(tgt); headlight.target = tgt;
-    g.add(headlight);
+    g.add(tgt); light.target = tgt;
+    g.add(light);
     const tank = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.55, 3.6), darkMetal);
     tank.position.set(0, 0.72, 0); g.add(tank);
   }
-  // 칸 사이 연결막 (벨로즈)
-  const bellowsEnds = isLoco? [-1] : [-1, 1];
-  for(const ez of bellowsEnds){
-    const bel = new THREE.Mesh(new THREE.BoxGeometry(1.75, 2.05, 0.3), bellowsMat);
-    bel.position.set(0, 2.12, ez*(len/2 + 0.07)); g.add(bel);
-  }
-  // 하부 + 대차 + 바퀴 (옆에서 보이게)
-  const under = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, len*0.9), darkMetal);
-  under.position.y = 0.8; g.add(under);
-  for(const bz of [len/2 - 2.1, -(len/2 - 2.1)]){
-    const bogie = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.36, 3.0), darkMetal);
-    bogie.position.set(0, 0.52, bz); g.add(bogie);
-    for(const sx of [-1, 1]){
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.26, 3.0), darkMetal);
-      frame.position.set(sx*1.06, 0.64, bz); g.add(frame);
-    }
-    for(const wx of [-0.98, 0.98]) for(const wz of [-0.95, 0.95]){
-      const wheel = new THREE.Mesh(wheelGeom, darkMetal);
-      wheel.position.set(wx, 0.48, bz + wz);
-      const hub = new THREE.Mesh(hubGeom, hubMat);
-      wheel.add(hub);
-      g.add(wheel); trainWheels.push(wheel);
-    }
-  }
-  return { group: g, len };
+  if(isLoco) addGangway(g, len, -1);
+  else { addGangway(g, len, -1); addGangway(g, len, 1); }
+  addBogies(g, len, wheels, null);
+  return { group: g, len, light };
 }
-const cars = [];
-{
+function buildExpress(idx, wheels){
+  const isLoco = idx===0;
+  const len = isLoco? 13.5 : 11.5, wid = 2.95;
+  const g = new THREE.Group();
+  let light = null;
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xb3312c, roughness:0.3, metalness:0.35 });
+  const silverMat = new THREE.MeshStandardMaterial({ color: 0xc9ced4, roughness:0.35, metalness:0.55 });
+  const s = new THREE.Shape();
+  if(isLoco){
+    s.moveTo(-len/2, 1.04); s.lineTo(len/2, 1.04); s.lineTo(len/2, 2.05);
+    s.quadraticCurveTo(len/2 - 0.5, 3.15, len/2 - 3.6, 3.5);
+    s.lineTo(-len/2 + 0.6, 3.5);
+    s.quadraticCurveTo(-len/2, 3.5, -len/2, 3.1); s.lineTo(-len/2, 1.04);
+  } else {
+    s.moveTo(-len/2, 1.04); s.lineTo(len/2, 1.04); s.lineTo(len/2, 3.3);
+    s.quadraticCurveTo(0, 3.78, -len/2, 3.3); s.lineTo(-len/2, 1.04);
+  }
+  const bodyGeo = new THREE.ExtrudeGeometry(s, { depth: wid, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.04, bevelSegments: 1, steps: 1 });
+  bodyGeo.translate(0, 0, -wid/2); bodyGeo.rotateY(-Math.PI/2);
+  const body = new THREE.Mesh(bodyGeo, [bodyMat, silverMat]);
+  body.castShadow = true; g.add(body);
+  const AX = wid/2 + 0.075;
+  for(const sx of [-1, 1]){
+    const lowBand = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.52, len*0.97), silverMat);
+    lowBand.position.set(sx*AX, 1.32, 0); g.add(lowBand);
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(len*(isLoco? 0.62 : 0.84), 0.78), coachGlassMat);
+    glass.position.set(sx*(AX + 0.02), 2.68, isLoco? -1.2 : 0);
+    glass.rotation.y = sx>0? Math.PI/2 : -Math.PI/2;
+    g.add(glass);
+  }
+  if(isLoco){
+    const shield = new THREE.Mesh(new THREE.BoxGeometry(2.25, 0.05, 1.45), glassMat);
+    shield.position.set(0, 3.3, len/2 - 3.05); shield.rotation.x = 0.52; g.add(shield);
+    const lampGeo = new THREE.SphereGeometry(0.11, 8, 8);
+    const lampMat = new THREE.MeshBasicMaterial({ color: 0xfff3c4 });
+    for(const lx of [-0.8, 0.8]){
+      const lamp = new THREE.Mesh(lampGeo, lampMat);
+      lamp.position.set(lx, 1.68, len/2 + 0.02); g.add(lamp);
+    }
+    light = new THREE.SpotLight(0xffe6b0, 0, 90, 0.42, 0.55, 1);
+    light.position.set(0, 2.2, len/2);
+    const tgt = new THREE.Object3D(); tgt.position.set(0, 0.8, len/2 + 42);
+    g.add(tgt); light.target = tgt;
+    g.add(light);
+    addGangway(g, len, -1);
+  } else addGangway(g, len, -1), addGangway(g, len, 1);
+  addBogies(g, len, wheels, silverMat);
+  return { group: g, len, light };
+}
+const driverGeom = new THREE.CylinderGeometry(0.74, 0.74, 0.16, 18); driverGeom.rotateZ(Math.PI/2);
+const smallWheelGeom = new THREE.CylinderGeometry(0.42, 0.42, 0.16, 14); smallWheelGeom.rotateZ(Math.PI/2);
+const brassMat = new THREE.MeshStandardMaterial({ color: 0x9a7b3f, roughness:0.35, metalness:0.7 });
+function spokedWheel(geom, wheels, g, x, y, z, spokes){
+  const wheel = new THREE.Mesh(geom, darkMetal);
+  wheel.position.set(x, y, z);
+  wheel.add(new THREE.Mesh(hubGeom, hubMat));
+  if(spokes) for(let k=0;k<3;k++){
+    const sp = new THREE.Mesh(new THREE.BoxGeometry(0.05, geom === driverGeom? 1.34 : 0.72, 0.09), hubMat);
+    sp.rotation.x = k * Math.PI/3;
+    wheel.add(sp);
+  }
+  g.add(wheel); wheels.push(wheel); trainWheels.push(wheel);
+  return wheel;
+}
+function buildVintage(idx, wheels){
+  const g = new THREE.Group();
+  let light = null;
+  const navyMat = new THREE.MeshStandardMaterial({ color: 0x27355e, roughness:0.45, metalness:0.25 });
+  const creamMat = new THREE.MeshStandardMaterial({ color: 0xe7dcc0, roughness:0.5, metalness:0.15 });
+  if(idx === 0){ // 증기기관차
+    const len = 11.5;
+    const boilerMat = new THREE.MeshStandardMaterial({ color: 0x1f2a24, roughness:0.35, metalness:0.45 });
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.32, 10.9), darkMetal);
+    frame.position.set(0, 1.0, 0); g.add(frame);
+    const boiler = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 6.6, 18), boilerMat);
+    boiler.geometry.rotateX(Math.PI/2);
+    boiler.position.set(0, 2.2, 1.7); boiler.castShadow = true; g.add(boiler);
+    const smokebox = new THREE.Mesh(new THREE.CylinderGeometry(1.04, 1.04, 0.6, 18), darkMetal);
+    smokebox.geometry.rotateX(Math.PI/2);
+    smokebox.position.set(0, 2.2, 5.15); g.add(smokebox);
+    const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.17, 0.75, 10), darkMetal);
+    chimney.position.set(0, 3.55, 4.55); g.add(chimney);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.44, 12, 10), brassMat);
+    dome.scale.y = 0.75; dome.position.set(0, 3.12, 2.7); g.add(dome);
+    const dome2 = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), boilerMat);
+    dome2.scale.y = 0.75; dome2.position.set(0, 3.08, 1.55); g.add(dome2);
+    const board = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.08, 7.4), darkMetal);
+    board.position.set(0, 1.62, 1.6); g.add(board);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(2.85, 2.35, 2.7), navyMat);
+    cab.position.set(0, 2.42, -4.15); cab.castShadow = true; g.add(cab);
+    const cabRoof = new THREE.Mesh(new THREE.BoxGeometry(3.05, 0.14, 3.0), darkMetal);
+    cabRoof.position.set(0, 3.66, -4.15); g.add(cabRoof);
+    for(const sx of [-1, 1]){
+      const cw = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.68, 0.95), glassMat);
+      cw.position.set(sx*1.45, 2.95, -3.85); g.add(cw);
+      const cw2 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.68, 0.8), glassMat);
+      cw2.position.set(sx*1.45, 2.95, -4.85); g.add(cw2);
+    }
+    for(const wx of [-0.62, 0.62]){
+      const fw = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.68, 0.05), glassMat);
+      fw.position.set(wx, 2.95, -2.78); g.add(fw);
+    }
+    const lampBox = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.56, 0.42), brassMat);
+    lampBox.position.set(0, 3.42, 5.3); g.add(lampBox);
+    const lampFace = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.42, 0.03), new THREE.MeshBasicMaterial({ color: 0xfff3c4 }));
+    lampFace.position.set(0, 3.42, 5.52); g.add(lampFace);
+    const wedge = new THREE.Shape();
+    wedge.moveTo(5.0, 0.12); wedge.lineTo(6.5, 0.12); wedge.lineTo(5.0, 1.05); wedge.lineTo(5.0, 0.12);
+    const wedgeGeo = new THREE.ExtrudeGeometry(wedge, { depth: 2.3, bevelEnabled: false });
+    wedgeGeo.translate(0, 0, -1.15); wedgeGeo.rotateY(-Math.PI/2);
+    const catcher = new THREE.Mesh(wedgeGeo, new THREE.MeshStandardMaterial({ color: 0x7a3b2e, roughness:0.6 }));
+    g.add(catcher);
+    for(const sx of [-1, 1]) for(const wz of [3.4, 4.5]) spokedWheel(smallWheelGeom, wheels, g, sx*1.0, 0.42, wz, false);
+    for(const sx of [-1, 1]) for(const wz of [-0.9, -2.5, -4.1]) spokedWheel(driverGeom, wheels, g, sx*1.0, 0.74, wz, true);
+    addCoupler(g, len, -1);
+    return { group: g, len, light };
+  }
+  if(idx === 1){ // 탄수차 (석탄차)
+    const len = 7.5;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.9, 7.3), navyMat);
+    body.position.set(0, 2.0, 0); body.castShadow = true; g.add(body);
+    const rim = new THREE.Mesh(new THREE.BoxGeometry(2.95, 0.16, 7.45), darkMetal);
+    rim.position.set(0, 2.98, 0); g.add(rim);
+    const coal = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.45, 6.6), new THREE.MeshStandardMaterial({ color: 0x0c0d0f, roughness:1 }));
+    coal.position.set(0, 3.05, 0); g.add(coal);
+    const under = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.45, 6.9), darkMetal);
+    under.position.y = 0.85; g.add(under);
+    for(const sx of [-1, 1]) for(const wz of [2.3, -2.3]) spokedWheel(smallWheelGeom, wheels, g, sx*1.0, 0.42, wz, true);
+    addCoupler(g, len, -1); addCoupler(g, len, 1);
+    return { group: g, len, light };
+  }
+  // 빈티지 객차 (2층 지붕)
+  const len = 10.5, wid = 2.95;
+  const s = new THREE.Shape();
+  s.moveTo(-len/2, 1.04); s.lineTo(len/2, 1.04); s.lineTo(len/2, 3.02);
+  s.quadraticCurveTo(0, 3.5, -len/2, 3.02); s.lineTo(-len/2, 1.04);
+  const bodyGeo = new THREE.ExtrudeGeometry(s, { depth: wid, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.04, bevelSegments: 1, steps: 1 });
+  bodyGeo.translate(0, 0, -wid/2); bodyGeo.rotateY(-Math.PI/2);
+  const body = new THREE.Mesh(bodyGeo, [navyMat, roofMat]);
+  body.castShadow = true; g.add(body);
+  const clerestory = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.34, len*0.78), roofMat);
+  clerestory.position.set(0, 3.42, 0); g.add(clerestory);
+  const AX = wid/2 + 0.075;
+  for(const sx of [-1, 1]){
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.045, 1.0, len*0.88), creamMat);
+    band.position.set(sx*(AX - 0.012), 2.5, 0); g.add(band);
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(len*0.84, 0.76), coachGlassMat);
+    glass.position.set(sx*(AX + 0.02), 2.52, 0);
+    glass.rotation.y = sx>0? Math.PI/2 : -Math.PI/2;
+    g.add(glass);
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.13, len*0.97), creamMat);
+    stripe.position.set(sx*AX, 1.82, 0); g.add(stripe);
+  }
+  addCoupler(g, len, -1); addCoupler(g, len, 1);
+  addBogies(g, len, wheels, null);
+  return { group: g, len, light };
+}
+const STACKS = [new THREE.Vector3(0, 3.45, 3.9), new THREE.Vector3(0, 3.62, -2.5), new THREE.Vector3(0, 4.05, 4.55)];
+const BUILDERS = [buildClassic, buildExpress, buildVintage];
+function buildTrainSet(type){
+  const set = { cars: [], wheels: [], headlight: null, stack: STACKS[type] };
   let off = 0;
   for(let i=0;i<6;i++){
-    const c = buildCar(i);
-    off += (i===0? 0 : 0.34) + c.len/2;
-    cars.push({ ...c, centerOff: off });
+    const c = BUILDERS[type](i, set.wheels);
+    off += (i===0? 0 : 0.22) + c.len/2;
+    set.cars.push({ group: c.group, len: c.len, centerOff: off });
+    if(c.light) set.headlight = c.light;
     off += c.len/2;
     scene.add(c.group);
   }
+  return set;
 }
-/* 기차 도장 3종 (색상 스킴): 입체 모델의 차체·띠 색을 바꿈 */
-const SCHEMES = [
-  { name: '클래식', body: 0x2f5d3a, accent: 0xe7dcc0 },
-  { name: '익스프레스', body: 0xb3312c, accent: 0xc9ced4 },
-  { name: '빈티지', body: 0x27355e, accent: 0xe7dcc0 }
-];
-let liveryIdx = -1, liveryPos = 3;
-function applyLivery(i){
-  liveryIdx = i; liveryPos = i < 0 ? 3 : i;
-  for(const p of trainPaint){
-    if(i < 0){ p.body.color.set(TRAIN_COLORS[p.idx]); p.accent.color.set(0xcfc9b8); }
-    else { p.body.color.set(SCHEMES[i].body); p.accent.color.set(SCHEMES[i].accent); }
-  }
+const trainSets = [buildTrainSet(0), buildTrainSet(1), buildTrainSet(2)];
+let activeSet = 0;
+let cars = trainSets[0].cars;
+function switchTrain(i){
+  activeSet = i;
+  trainSets.forEach((st, k)=> st.cars.forEach(c=> { c.group.visible = k === i; }));
+  cars = trainSets[i].cars;
+  headlight = trainSets[i].headlight;
   const btn = document.getElementById('trainBtn');
-  if(btn) btn.textContent = '기차: ' + (i < 0 ? '기본' : SCHEMES[i].name);
+  if(btn) btn.textContent = '기차: ' + TYPE_NAMES[i];
 }
+switchTrain(0);
 const _pp = new THREE.Vector3(), _pa = new THREE.Vector3();
 function placeTrain(){
   for(const c of cars){
@@ -1237,7 +1408,7 @@ function placeTrain(){
     c.group.lookAt(_pa.x, _pa.y + TRACK_TOP, _pa.z);
   }
   const loco = cars[0];
-  loco.group.localToWorld(locoStack.set(0, 3.45, 3.9));
+  loco.group.localToWorld(locoStack.copy(trainSets[activeSet].stack));
 }
 
 /* ================= sky extras ================= */
@@ -1656,7 +1827,7 @@ function placeTrainR(){
     c.group.lookAt(_pa.x, _pa.y + TRACK_TOP, _pa.z);
   }
   const loco = cars[0];
-  loco.group.localToWorld(locoStack.set(0, 3.45, 3.9));
+  loco.group.localToWorld(locoStack.copy(trainSets[activeSet].stack));
 }
 function updateCameraR(dt, t){
   pathPointR(headSR - realDir*20, _ctr);
@@ -1713,10 +1884,10 @@ document.getElementById('playBtn').addEventListener('click', e=>{
   playing=!playing; e.target.textContent = playing? "멈추기" : "계속 가기";
 });
 const speeds=[1,0.5,1.7,3,5,8]; let speedIdx=0;
+let trainPos = 0;
 document.getElementById('trainBtn').addEventListener('click', ()=>{
-  const order = [0, 1, 2, -1];
-  liveryPos = (liveryPos + 1) % order.length;
-  applyLivery(order[liveryPos]);
+  trainPos = (trainPos + 1) % 3;
+  switchTrain(trainPos);
 });
 document.getElementById('speedBtn').addEventListener('click', e=>{
   speedIdx=(speedIdx+1)%speeds.length; speedMul=speeds[speedIdx];

@@ -1,4 +1,4 @@
-const CACHE = 'healing-train-v12';
+const CACHE = 'healing-train-v13';
 const CORE = [
   './', './index.html', './train3d.html', './iso.html', './side-view.html',
   './assets/three.min.js', './assets/RGBELoader.js', './assets/GLTFLoader.js', './assets/sky_day.hdr', './assets/sky_sunset.hdr',
