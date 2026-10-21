@@ -1,10 +1,10 @@
-const CACHE = 'healing-train-v14';
+const CACHE = 'healing-train-v15';
 const CORE = [
   './', './index.html', './train3d.html', './iso.html', './side-view.html',
   './assets/three.min.js', './assets/RGBELoader.js', './assets/GLTFLoader.js', './assets/sky_day.hdr', './assets/sky_sunset.hdr',
   './assets/models/pine-tree.glb', './assets/models/tree-leafy.glb', './assets/models/rock.glb', './assets/models/bush.glb', './assets/models/house.glb', './assets/models/house-2.glb',
   './assets/realroute/meta.json', './assets/realroute/samples.bin', './assets/realroute/grid.bin',
-  './assets/pano_rockies.jpg', './assets/ground_meadow.jpg', './assets/ground_forest.jpg', './assets/prop_pine.png', './assets/prop_house.png', './assets/ground_field.jpg', './assets/pano_desert.jpg', './assets/pano_coast.jpg', './assets/ground_desert.jpg', './assets/ground_coast.jpg',
+  './assets/pano_rockies.jpg', './assets/ground_meadow.jpg', './assets/ground_forest.jpg', './assets/prop_pine.png', './assets/prop_house.png', './assets/ground_field.jpg', './assets/pano_desert.jpg', './assets/pano_coast.jpg', './assets/ground_desert.jpg', './assets/ground_coast.jpg', './assets/prop_palm.png',
   './manifest.json',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png'
 ];

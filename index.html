@@ -90,7 +90,7 @@ const SEG3 = 820, BLEND3 = 230;
 const PALS = [
   { name:"아침 초원", sub:"MEADOW", sky:0xa9cfee, gA:0x79b657, gB:0x639e47, far:0x8fb98a, sun:0xfff2d8, sunI:1.2, hemiI:0.75, night:0, coast:0, alpine:0, snow:0 },
   { name:"깊은 숲",   sub:"FOREST", sky:0x9ec9b4, gA:0x4f8a45, gB:0x3d7038, far:0x5d8a66, sun:0xf2ffd8, sunI:1.05, hemiI:0.65, night:0, coast:0, alpine:0, snow:0, mount:0 },
-  { name:"바닷가",    sub:"COAST",  sky:0xa5dcf2, gA:0x79b657, gB:0x679e4c, far:0x7fb2c9, sun:0xfff6d8, sunI:1.25, hemiI:0.8, night:0, coast:1, alpine:0, snow:0 },
+  { name:"해변",    sub:"COAST",  sky:0xa5dcf2, gA:0xdcc79e, gB:0xcdb488, far:0x7fb2c9, sun:0xfff6d8, sunI:1.25, hemiI:0.8, night:0, coast:1, alpine:0, snow:0 },
   { name:"노을 사막", sub:"DESERT", sky:0xf2c48d, gA:0xddba68, gB:0xcaa050, far:0xc98d5a, sun:0xffd9a0, sunI:1.3, hemiI:0.7, night:0.15, coast:0, alpine:0, snow:0, mount:0, desert:1 },
   { name:"노을 호수", sub:"SUNSET", sky:0xfb9a4e, gA:0x9aa04e, gB:0x7f9448, far:0xc97a4a, sun:0xffb066, sunI:1.25, hemiI:0.55, night:0.25, coast:0, alpine:0, snow:0 },
   { name:"눈 내리는 마을", sub:"SNOW", sky:0xcfdde8, gA:0xf0f5f9, gB:0xdfe9f1, far:0xb9cbd8, sun:0xeef4ff, sunI:1.0, hemiI:0.8, night:0, coast:0, alpine:0, snow:0.8 },
@@ -252,6 +252,12 @@ new THREE.TextureLoader().load('assets/prop_pine.png', t=>{
   t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
   bbMat = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 });
   bbTex = t;
+}, undefined, ()=>{});
+let palmTex = null, palmMat = null;
+new THREE.TextureLoader().load('assets/prop_palm.png', t=>{
+  t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
+  palmMat = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 });
+  palmTex = t;
 }, undefined, ()=>{});
 const _skyTop = new THREE.Color(), _skyBot = new THREE.Color(), _white = new THREE.Color(0xffffff), _black = new THREE.Color(0x000000);
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 2400);
@@ -757,6 +763,7 @@ function buildChunk(ci){
   else if(bName==='ALPINE'){ plan.pineSnow=26; plan.rock=24; }
   else if(bName==='NIGHT'){ plan.pine=36; plan.round=6; }
   if(bbTex && (bName==='MEADOW' || bName==='FOREST')){ plan.pine = 0; plan.round = 0; }
+  if(palmTex && bName==='COAST'){ plan.palm = 0; }
   for(const type of Object.keys(plan)){
     const cnt = plan[type];
     if(!cnt) continue;
@@ -810,6 +817,27 @@ function buildChunk(ci){
     bb.count = placed; bb.frustumCulled = false;
     group.add(bb);
     const lst0 = BB_SET.get(ci) || []; lst0.push({ im: bb, items }); BB_SET.set(ci, lst0);
+  }
+
+  // 사진 야자수 빌보드 (해변): 육지 쪽 + 물가의 모래톱
+  if(palmTex && bName==='COAST'){
+    const nBB = 20;
+    const pb = new THREE.InstancedMesh(bbGeom, palmMat, nBB);
+    const items = [];
+    let placed = 0, guard = 0;
+    while(placed < nBB && guard++ < nBB*30){
+      const x = ci*CHUNK + rnd()*CHUNK;
+      if(bz && x > bz[0]-4 && x < bz[1]+4) continue;
+      const sea = rnd() < 0.35;
+      const side = sea ? 1 : -1;
+      const dist = sea ? 15 + rnd()*15 : 14 + Math.pow(rnd(), 1.3)*80;
+      const z = latAt(x) + side*dist;
+      items.push({ x, y: groundH(x, z) - 0.1, z, h: 6.5 + rnd()*3.5, flip: rnd() < 0.5 });
+      placed++;
+    }
+    pb.count = placed; pb.frustumCulled = false;
+    group.add(pb);
+    const lst2 = BB_SET.get(ci) || []; lst2.push({ im: pb, items }); BB_SET.set(ci, lst2);
   }
 
   // 집 (눈 마을·밤에는 마을처럼 모여서)
@@ -2042,6 +2070,7 @@ function updateCamera(dt, t){
 
 /* HDRI 환경광이 너무 세지 않게 */
 [terrainMat, ballastMat, foliageMat, mesaMat, ridgeMat, waterMat, deckMat, iceMat, modelMat, ...fieldMats].forEach(m=>{ m.envMapIntensity = 0.5; });
+waterMat.envMapIntensity = 0.95;
 
 /* ================= main loop ================= */
 const winDay = new THREE.Color(0x2b3e4f), winNight = new THREE.Color(0xffca7a), _wc = new THREE.Color();
