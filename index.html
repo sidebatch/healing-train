@@ -202,23 +202,25 @@ if(THREE.RGBELoader){
     }, undefined, ()=>{});
   }
 }
-/* 사진 파노라마 배경 (생성 이미지, 록키 계곡): 초원·숲 바이옴에서 하늘 사진 대신 배경 전체를 사진으로 */
-let panoTex = null;
+/* 사진 파노라마 배경 (생성 이미지): 바이옴별 배경 전체를 사진으로 */
+const panoTexs = {};
+const PANO_BG = { MEADOW: 0x9db9dc, FOREST: 0x9db9dc, DESERT: 0xf0b183, COAST: 0xa8d4ea };
 const panoMesh = new THREE.Mesh(
   new THREE.CylinderGeometry(1700, 1700, 1500, 40, 1, true),
   new THREE.MeshBasicMaterial({ side: THREE.BackSide, fog: false, depthWrite: false })
 );
 panoMesh.visible = false; panoMesh.frustumCulled = false; panoMesh.renderOrder = -10;
 scene.add(panoMesh);
-new THREE.TextureLoader().load('assets/pano_rockies.jpg', t=>{
-  t.encoding = THREE.sRGBEncoding;
-  t.wrapS = THREE.MirroredRepeatWrapping; t.repeat.x = 2; t.anisotropy = 8;
-  panoMesh.material.map = t; panoMesh.material.needsUpdate = true;
-  panoTex = t;
-}, undefined, ()=>{});
+for(const [psub, pfile] of [['MEADOW', 'assets/pano_rockies.jpg'], ['FOREST', 'assets/pano_rockies.jpg'], ['DESERT', 'assets/pano_desert.jpg'], ['COAST', 'assets/pano_coast.jpg']]){
+  new THREE.TextureLoader().load(pfile, t=>{
+    t.encoding = THREE.sRGBEncoding;
+    t.wrapS = THREE.MirroredRepeatWrapping; t.repeat.x = 2; t.anisotropy = 8;
+    panoTexs[psub] = t;
+  }, undefined, ()=>{});
+}
 /* 사진 지면 텍스처 (생성 이미지): 초원·숲의 가까운 지면을 사진 질감으로 */
 const groundTexs = {};
-for(const [gsub, gfile, grx, gry] of [['MEADOW', 'assets/ground_meadow.jpg', 10, 18], ['FOREST', 'assets/ground_forest.jpg', 8, 14]]){
+for(const [gsub, gfile, grx, gry] of [['MEADOW', 'assets/ground_meadow.jpg', 10, 18], ['FOREST', 'assets/ground_forest.jpg', 8, 14], ['DESERT', 'assets/ground_desert.jpg', 8, 14], ['COAST', 'assets/ground_coast.jpg', 8, 14]]){
   new THREE.TextureLoader().load(gfile, t=>{
     t.encoding = THREE.sRGBEncoding;
     t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping;
@@ -2043,7 +2045,7 @@ function updateCamera(dt, t){
 
 /* ================= main loop ================= */
 const winDay = new THREE.Color(0x2b3e4f), winNight = new THREE.Color(0xffca7a), _wc = new THREE.Color();
-let panoWas = false;
+let panoWas = false, panoSub = '';
 let last = performance.now();
 function frame(now){
   requestAnimationFrame(frame);
@@ -2089,7 +2091,8 @@ function frame(now){
     : pal.night > 0.6 ? 'gradient'
     : (biomeAt3(headS).sub === 'SUNSET' || biomeAt3(headS).sub === 'DESERT') ? 'sunset' : 'day';
   const _sub = mode === 'dream' ? biomeAt3(headS).sub : '';
-  const wantPano = !!panoTex && pal.night <= 0.6 && (_sub === 'MEADOW' || _sub === 'FOREST');
+  const wantPanoTex = (mode === 'dream' && pal.night <= 0.6) ? (panoTexs[_sub] || null) : null;
+  const wantPano = !!wantPanoTex;
   const wantGroundMap = mode === 'dream' ? (groundTexs[_sub] || noiseTex) : noiseTex;
   if(terrainMat.map !== wantGroundMap){ terrainMat.map = wantGroundMap; terrainMat.needsUpdate = true; }
   if(wantPano !== panoWas){
@@ -2101,10 +2104,13 @@ function frame(now){
   if(wantPano){
     panoMesh.visible = true;
     panoMesh.position.set(camera.position.x, camera.position.y - 40, camera.position.z);
-    if(skyMode !== 'pano'){
-      scene.background = bgColor; bgColor.set(0x9db9dc);
+    if(panoMesh.material.map !== wantPanoTex){ panoMesh.material.map = wantPanoTex; panoMesh.material.needsUpdate = true; }
+    if(skyMode !== 'pano' || panoSub !== _sub){
+      panoSub = _sub;
+      scene.background = bgColor; bgColor.set(PANO_BG[_sub] || 0x9db9dc);
       skyDome.visible = false;
-      if(skyTexs.day){ if(!envCache.day) envCache.day = pmrem.fromEquirectangular(skyTexs.day).texture; scene.environment = envCache.day; }
+      const ek = _sub === 'DESERT' ? 'sunset' : 'day';
+      if(skyTexs[ek]){ if(!envCache[ek]) envCache[ek] = pmrem.fromEquirectangular(skyTexs[ek]).texture; scene.environment = envCache[ek]; }
       skyMode = 'pano';
     }
   } else {
