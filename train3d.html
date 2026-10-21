@@ -225,6 +225,15 @@ for(const [gsub, gfile, grx, gry] of [['MEADOW', 'assets/ground_meadow.jpg', 10,
     groundTexs[gsub] = t;
   }, undefined, ()=>{});
 }
+/* 사진 소품 빌보드 (생성 사진에서 배경을 걷어낸 소나무): 초원·숲에서 3D 나무 대신 실사 나무 */
+let bbTex = null, bbMat = null;
+const bbGeom = new THREE.PlaneGeometry(0.98, 2); bbGeom.translate(0, 1, 0);
+const BB_SET = new Map();
+new THREE.TextureLoader().load('assets/prop_pine.png', t=>{
+  t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
+  bbMat = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 });
+  bbTex = t;
+}, undefined, ()=>{});
 const _skyTop = new THREE.Color(), _skyBot = new THREE.Color(), _white = new THREE.Color(0xffffff), _black = new THREE.Color(0x000000);
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 2400);
 camera.position.set(-30, 14, 60);
@@ -487,7 +496,7 @@ const UMB_GEOMS = [umbrellaGeom(0xe2574c), umbrellaGeom(0x3e7dc4), umbrellaGeom(
 const GEOMS = { pine: pineGeom(false), pineSnow: pineGeom(true), round: roundGeom(), palm: palmGeom(), cactus: cactusGeom(), rock: rockGeom(), bush: bushGeom(),
   lighthouse: lighthouseGeom(), boat: boatGeom(), snowman: snowmanGeom(), bale: baleGeom(), signal: signalGeom(), lamp: lampGeom() };
 const poleGeomInst = poleGeom();
-const SHARED_GEO = new Set([...Object.values(GEOMS), poleGeomInst, ...UMB_GEOMS]);
+const SHARED_GEO = new Set([...Object.values(GEOMS), poleGeomInst, ...UMB_GEOMS, bbGeom]);
 const ridgeGeomInst = ridgeGeom();
 SHARED_GEO.add(ridgeGeomInst);
 const ridgeMat = new THREE.MeshStandardMaterial({ vertexColors:true, color:0x8fb98a, roughness:1, flatShading:true });
@@ -728,6 +737,7 @@ function buildChunk(ci){
   else if(bName==='SNOW'){ plan.pineSnow=48; plan.rock=2; plan.snowman=3; }
   else if(bName==='ALPINE'){ plan.pineSnow=26; plan.rock=24; }
   else if(bName==='NIGHT'){ plan.pine=36; plan.round=6; }
+  if(bbTex && (bName==='MEADOW' || bName==='FOREST')){ plan.pine = 0; plan.round = 0; }
   for(const type of Object.keys(plan)){
     const cnt = plan[type];
     if(!cnt) continue;
@@ -763,6 +773,25 @@ function buildChunk(ci){
     group.add(inst);
   }
   _dummy.rotation.set(0,0,0); _dummy.scale.set(1,1,1);
+
+  // 사진 나무 빌보드 배치 (초원·숲): 매 프레임 카메라 쪽으로 돌아섬
+  if(bbTex && (bName==='MEADOW' || bName==='FOREST')){
+    const nBB = bName==='FOREST' ? 26 : 14;
+    const bb = new THREE.InstancedMesh(bbGeom, bbMat, nBB);
+    const items = [];
+    let placed = 0, guard = 0;
+    while(placed < nBB && guard++ < nBB*30){
+      const x = ci*CHUNK + rnd()*CHUNK;
+      const side = rnd()<0.5? -1: 1;
+      const dist = placed % 3 === 0 ? 13 + rnd()*13 : 26 + Math.pow(rnd(), 1.4)*110;
+      const z = latAt(x) + side*dist;
+      items.push({ x, y: groundH(x, z) - 0.1, z, h: (7.5 + rnd()*4.5) * (bName==='FOREST'? 1.15 : 1) });
+      placed++;
+    }
+    bb.count = placed; bb.frustumCulled = false;
+    group.add(bb);
+    BB_SET.set(ci, { im: bb, items });
+  }
 
   // 집 (눈 마을·밤에는 마을처럼 모여서)
   const nH = bName==='MEADOW'?2 : bName==='SNOW'?9 : bName==='NIGHT'?5 : bName==='SUNSET'?2 : bName==='COAST'?1 : 0;
@@ -1001,6 +1030,7 @@ function updateChunks(){
     if(ci<lo || ci>hi){
       procGroup.remove(g);
       g.traverse(o=>{ if(o.geometry && o.geometry!==sleeperGeom && o.geometry!==railGeom && !SHARED_GEO.has(o.geometry)) o.geometry.dispose(); });
+      BB_SET.delete(ci);
       chunks.delete(ci);
     }
   }
@@ -1742,6 +1772,20 @@ function frame(now){
 
   if(mode === 'real' && REAL.ready){ updateChunksR(); placeTrainR(); }
   else { if(modelsSettled) updateChunks(); placeTrain(); }
+  if(mode === 'dream' && bbMat){
+    for(const ent of BB_SET.values()){
+      for(let i=0;i<ent.items.length;i++){
+        const it = ent.items[i];
+        _dummy.position.set(it.x, it.y, it.z);
+        _dummy.rotation.set(0, Math.atan2(camera.position.x - it.x, camera.position.z - it.z), 0);
+        const sc = it.h/2; _dummy.scale.set(sc, sc, sc);
+        _dummy.updateMatrix();
+        ent.im.setMatrixAt(i, _dummy.matrix);
+      }
+      ent.im.instanceMatrix.needsUpdate = true;
+    }
+    _dummy.rotation.set(0,0,0); _dummy.scale.set(1,1,1);
+  }
   if(playing){
     const wAng = speed*dt/0.48 * (mode === 'real'? realDir : 1);
     for(const w of trainWheels) w.rotation.x -= wAng;
