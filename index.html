@@ -246,6 +246,10 @@ for(const hf of ['assets/prop_house.png','assets/prop_house2.png','assets/prop_h
     houseTex = t;
   }, undefined, ()=>{});
 }
+/* 빌보드 발밑 그림자 (공중에 떠 보이지 않게) */
+const shadowTex = (()=>{ const cv = document.createElement('canvas'); cv.width = cv.height = 128; const g = cv.getContext('2d'); const gr = g.createRadialGradient(64,64,4,64,64,62); gr.addColorStop(0,'rgba(0,0,0,0.55)'); gr.addColorStop(0.7,'rgba(0,0,0,0.28)'); gr.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0,0,128,128); return new THREE.CanvasTexture(cv); })();
+const shadowGeom = new THREE.PlaneGeometry(2, 2); shadowGeom.rotateX(-Math.PI/2);
+const shadowMat = new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0.55 });
 /* 밭 사진 질감: 단색 밭 평면을 실제 작물 사진으로 */
 new THREE.TextureLoader().load('assets/ground_field.jpg', t=>{
   t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; t.anisotropy = 8;
@@ -549,7 +553,7 @@ const UMB_GEOMS = [umbrellaGeom(0xe2574c), umbrellaGeom(0x3e7dc4), umbrellaGeom(
 const GEOMS = { pine: pineGeom(false), pineSnow: pineGeom(true), round: roundGeom(), palm: palmGeom(), cactus: cactusGeom(), rock: rockGeom(), bush: bushGeom(),
   lighthouse: lighthouseGeom(), boat: boatGeom(), snowman: snowmanGeom(), bale: baleGeom(), signal: signalGeom(), lamp: lampGeom() };
 const poleGeomInst = poleGeom();
-const SHARED_GEO = new Set([...Object.values(GEOMS), poleGeomInst, ...UMB_GEOMS, bbGeom]);
+const SHARED_GEO = new Set([...Object.values(GEOMS), poleGeomInst, ...UMB_GEOMS, bbGeom, shadowGeom]);
 const ridgeGeomInst = ridgeGeom();
 SHARED_GEO.add(ridgeGeomInst);
 const ridgeMat = new THREE.MeshStandardMaterial({ vertexColors:true, color:0x8fb98a, roughness:1, flatShading:true });
@@ -939,19 +943,38 @@ function buildChunk(ci){
     skipHouses3D = true;
     const byVar = new Map();
     for(let i=0;i<nH;i++){
-      let hx, side, hz;
+      let bx, bside, bz2;
       if(bName==='NIGHT' || bName==='SNOW'){ // 마을은 한곳에 모아서, 사진 집으로
-        hx = vX + (i - (nH-1)/2)*13 + (rnd()-0.5)*5;
-        side = vSide;
-        hz = latAt(hx) + side*(23 + (i%2)*13 + rnd()*5);
+        bx = vX + (i - (nH-1)/2)*13 + (rnd()-0.5)*5;
+        bside = vSide;
+        bz2 = latAt(bx) + bside*(23 + (i%2)*13 + rnd()*5);
       } else {
-        hx = ci*CHUNK + 30 + rnd()*(CHUNK-60);
-        side = rnd()<0.5? -1: 1;
-        hz = latAt(hx) + side*(26 + rnd()*70);
+        bx = ci*CHUNK + 30 + rnd()*(CHUNK-60);
+        bside = rnd()<0.5? -1: 1;
+        bz2 = latAt(bx) + bside*(26 + rnd()*70);
       }
       const v = Math.floor(rnd()*HOUSES.length);
+      const hh = 7 + rnd()*1.6, flip = rnd() < 0.5;
+      const gw = HOUSES[v].geom.parameters.width;
+      const hw = gw * hh / 4; // 집 발자국 반너비
+      // 경사에서 뜨지 않게: 주변에서 가장 평평한 자리를 고르고 가장 낮은 모서리에 밑면을 맞춘다
+      let best = null;
+      for(let t=0;t<6;t++){
+        const cx2 = bx + (t? (rnd()-0.5)*11 : 0), cz2 = bz2 + (t? (rnd()-0.5)*11 : 0);
+        const hs = [groundH(cx2-hw, cz2), groundH(cx2+hw, cz2), groundH(cx2, cz2-hw), groundH(cx2, cz2+hw), groundH(cx2, cz2)];
+        const lo = Math.min(...hs), rough = Math.max(...hs) - lo;
+        if(!best || rough < best.rough) best = { x: cx2, z: cz2, rough, low: lo };
+        if(rough < 0.35) break;
+      }
       if(!byVar.has(v)) byVar.set(v, []);
-      byVar.get(v).push({ x: hx, y: groundH(hx, hz) - 0.05, z: hz, h: 7 + rnd()*1.6, flip: rnd() < 0.5 });
+      byVar.get(v).push({ x: best.x, y: best.low - 0.10, z: best.z, h: hh, flip });
+      // 발밑 부드러운 그림자
+      const sh = new THREE.Mesh(shadowGeom, shadowMat);
+      sh.position.set(best.x, best.low + 0.14, best.z);
+      sh.scale.set(gw * hh * 0.31, 1, gw * hh * 0.18);
+      sh.rotation.y = rnd()*Math.PI;
+      sh.renderOrder = 2;
+      group.add(sh);
     }
     const lst1 = BB_SET.get(ci) || [];
     for(const [v, its] of byVar){
