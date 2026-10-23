@@ -1612,7 +1612,7 @@ const meteorTex = (()=>{
 const meteors = [];
 for(let i=0;i<3;i++){
   const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(56, 1.5),
+    new THREE.PlaneGeometry(64, 1.8),
     new THREE.MeshBasicMaterial({ map: meteorTex, transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false, fog:false, side:THREE.DoubleSide })
   );
   mesh.visible = false; mesh.frustumCulled = false; mesh.renderOrder = 6;
@@ -1620,27 +1620,31 @@ for(let i=0;i<3;i++){
   meteors.push({ mesh, t: 1e9, dur: 1, from: new THREE.Vector3(), dir: new THREE.Vector3() });
 }
 let meteorTimer = 1.4;
-const _mr = new THREE.Vector3(), _mu = new THREE.Vector3();
+const _mr = new THREE.Vector3(), _mu = new THREE.Vector3(), _mf = new THREE.Vector3();
 function updateMeteors(dt, night){
   if(night < 0.5){ for(const mt of meteors){ mt.mesh.visible = false; mt.t = 1e9; } meteorTimer = 1.4; return; }
   meteorTimer -= dt;
   if(meteorTimer <= 0){
     const mt = meteors.find(x => x.t >= x.dur);
     if(mt){
-      const az = Math.random()*Math.PI*2;
-      mt.from.set(Math.cos(az)*720, 460 + Math.random()*280, Math.sin(az)*720);
-      const side = Math.random() < 0.5 ? -1 : 1;
-      mt.dir.set(side*(0.55 + Math.random()*0.3), -(0.36 + Math.random()*0.22), (Math.random()-0.5)*0.3).normalize();
-      mt.t = 0; mt.dur = 0.75 + Math.random()*0.4;
+      // 카메라가 보는 하늘 안에서만 떨어지게 (뒤쪽에 생기면 아무도 못 본다)
+      camera.getWorldDirection(_mf); _mf.y = 0; _mf.normalize();
+      const baseAz = Math.atan2(_mf.z, _mf.x);
+      const az = baseAz + (Math.random()-0.5) * 1.7;
+      mt.from.set(Math.cos(az)*760, 430 + Math.random()*260, Math.sin(az)*760);
+      const sgn = Math.random() < 0.5 ? -1 : 1;
+      const sp = 0.62 + Math.random()*0.25;
+      mt.dir.set(-_mf.z*sgn*sp, -(0.34 + Math.random()*0.2), _mf.x*sgn*sp).addScaledVector(_mf, (Math.random()-0.5)*0.25).normalize();
+      mt.t = 0; mt.dur = 1.15 + Math.random()*0.5;
       mt.mesh.visible = true;
     }
-    meteorTimer = 4 + Math.random()*5;
+    meteorTimer = 3.5 + Math.random()*4;
   }
   for(const mt of meteors){
     if(mt.t >= mt.dur){ mt.mesh.visible = false; continue; }
     mt.t += dt;
     const k = Math.min(mt.t / mt.dur, 1);
-    mt.mesh.position.copy(camera.position).add(mt.from).addScaledVector(mt.dir, k*470);
+    mt.mesh.position.copy(camera.position).add(mt.from).addScaledVector(mt.dir, k*520);
     mt.mesh.lookAt(camera.position);
     _mr.setFromMatrixColumn(camera.matrix, 0);
     _mu.setFromMatrixColumn(camera.matrix, 1);
