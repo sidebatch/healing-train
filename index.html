@@ -2494,15 +2494,18 @@ requestAnimationFrame(frame);
 </script>
 <script data-goatcounter="https://healing-train.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 <script>
-fetch('https://healing-train.goatcounter.com/counter/TOTAL.json')
-  .then(function(r){ return r.ok ? r.json() : null; })
-  .then(function(d){
-    if (d && d.count != null) {
-      var n = parseInt(d.count, 10);
-      if (!isNaN(n)) document.getElementById('visits').innerHTML = ' &middot; <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg> ' + n.toLocaleString('en-US');
-    }
-  })
-  .catch(function(){});
+(function(){
+  var paths = ['%2Fhealing-train%2F', '%2Fhealing-train%2Findex.html', '%2Fhealing-train%2Ftrain3d.html'];
+  Promise.all(paths.map(function(pp){
+    return fetch('https://healing-train.goatcounter.com/counter/' + pp + '.json')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .catch(function(){ return null; });
+  })).then(function(ds){
+    var total = 0, any = false;
+    ds.forEach(function(d){ if (d && d.count != null) { var n = parseInt(d.count, 10); if (!isNaN(n)) { total += n; any = true; } } });
+    if (any) document.getElementById('visits').innerHTML = ' &middot; <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg> ' + total.toLocaleString('en-US');
+  });
+})();
 </script>
 </body>
 </html>
