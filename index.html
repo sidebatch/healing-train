@@ -2167,6 +2167,12 @@ function markMapChip(){
   if(realChip) realChip.classList.toggle('on', mode === 'real');
 }
 let audioCtx=null, audioOn=false, padTimer=null, masterGain=null, chordIdx=0;
+/* 사용자 음악 파일 (Cobblestone Railway, 6분 루프) — 로드 실패 시 기존 패드 음악으로 폴백 */
+const bgm = new Audio('assets/bgm_cobblestone.mp3');
+bgm.loop = true; bgm.preload = 'none';
+let bgmSrc = null, bgmOK = true;
+function startPads(){ if(!padTimer){ padChord(); padTimer = setInterval(padChord, 7000); } }
+bgm.addEventListener('error', ()=>{ if(bgmOK){ bgmOK = false; if(audioOn) startPads(); } });
 function ensureAudio(){
   if(audioCtx){ if(audioCtx.state==='suspended') audioCtx.resume(); return; }
   audioCtx = new (window.AudioContext||window.webkitAudioContext)();
@@ -2181,6 +2187,14 @@ function ensureAudio(){
   const nf = audioCtx.createBiquadFilter(); nf.type = "lowpass"; nf.frequency.value = 420;
   const ng = audioCtx.createGain(); ng.gain.value = 0.03;
   nsrc.connect(nf); nf.connect(ng); ng.connect(masterGain); nsrc.start();
+  // 음악 파일을 오디오 그래프에 연결 (한 번만)
+  if(bgmOK && !bgmSrc){
+    try{
+      bgmSrc = audioCtx.createMediaElementSource(bgm);
+      const bg = audioCtx.createGain(); bg.gain.value = 0.85;
+      bgmSrc.connect(bg); bg.connect(masterGain);
+    }catch(e){ bgmOK = false; }
+  }
 }
 function padChord(){
   if(!audioCtx || !audioOn) return;
@@ -2215,14 +2229,17 @@ function playChime(){ // 켜는 순간 바로 들리는 확인음 (부드러운 
 }
 function toggleAudio(){
   if(audioOn){
-    audioOn=false; clearInterval(padTimer);
+    audioOn=false; clearInterval(padTimer); padTimer=null;
+    bgm.pause();
     if(audioCtx) audioCtx.suspend();
     document.getElementById('soundBtn').textContent="소리 켜기"; return;
   }
   ensureAudio();
   if(audioCtx.state === 'suspended') audioCtx.resume();
   audioOn=true;
-  playChime(); padChord(); padTimer=setInterval(padChord, 7000);
+  playChime();
+  if(bgmOK){ bgm.play().catch(()=>{ bgmOK = false; startPads(); }); }
+  else startPads();
   document.getElementById('soundBtn').textContent="소리 끄기";
 }
 document.getElementById('soundBtn').addEventListener('click', toggleAudio);

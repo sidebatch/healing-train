@@ -1,4 +1,4 @@
-const CACHE = 'healing-train-v20';
+const CACHE = 'healing-train-v21';
 const CORE = [
   './', './index.html', './train3d.html', './iso.html', './side-view.html',
   './assets/three.min.js', './assets/RGBELoader.js', './assets/GLTFLoader.js', './assets/sky_day.hdr', './assets/sky_sunset.hdr',
@@ -30,6 +30,7 @@ self.addEventListener('fetch', e => {
     return;
   }
   if (url.origin !== location.origin) return;
+  if (url.pathname.endsWith('.mp3')) return; // 음악 파일은 브라우저 스트리밍에 맡김 (레인지 요청 충돌 방지)
   const isDoc = e.request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('/');
   if (isDoc) {
     // 문서는 네트워크 우선: 업데이트가 바로 보이고, 오프라인이면 캐시로
