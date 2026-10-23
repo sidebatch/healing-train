@@ -90,7 +90,6 @@ const SEG3 = 820, BLEND3 = 230;
 const PALS = [
   { name:"아침 초원", sub:"MEADOW", sky:0xa9cfee, gA:0x79b657, gB:0x639e47, far:0x8fb98a, sun:0xfff2d8, sunI:1.2, hemiI:0.75, night:0, coast:0, alpine:0, snow:0 },
   { name:"깊은 숲",   sub:"FOREST", sky:0x9ec9b4, gA:0x4f8a45, gB:0x3d7038, far:0x5d8a66, sun:0xf2ffd8, sunI:1.05, hemiI:0.65, night:0, coast:0, alpine:0, snow:0, mount:0 },
-  { name:"해변",    sub:"COAST",  sky:0xa5dcf2, gA:0xdcc79e, gB:0xcdb488, far:0x7fb2c9, sun:0xfff6d8, sunI:1.25, hemiI:0.8, night:0, coast:1, alpine:0, snow:0 },
   { name:"노을 사막", sub:"DESERT", sky:0xf2c48d, gA:0xddba68, gB:0xcaa050, far:0xc98d5a, sun:0xffd9a0, sunI:1.3, hemiI:0.7, night:0.15, coast:0, alpine:0, snow:0, mount:0, desert:1 },
   { name:"노을 호수", sub:"SUNSET", sky:0xfb9a4e, gA:0x9aa04e, gB:0x7f9448, far:0xc97a4a, sun:0xffb066, sunI:1.25, hemiI:0.55, night:0.25, coast:0, alpine:0, snow:0 },
   { name:"눈 내리는 마을", sub:"SNOW", sky:0xcfdde8, gA:0xf0f5f9, gB:0xdfe9f1, far:0xb9cbd8, sun:0xeef4ff, sunI:1.0, hemiI:0.8, night:0, coast:0, alpine:0, snow:0.8 },
@@ -215,7 +214,7 @@ const panoMesh = new THREE.Mesh(
 );
 panoMesh.visible = false; panoMesh.frustumCulled = false; panoMesh.renderOrder = -10;
 scene.add(panoMesh);
-for(const [psub, pfile] of [['MEADOW', 'assets/pano_rockies.jpg'], ['FOREST', 'assets/pano_rockies.jpg'], ['DESERT', 'assets/pano_desert.jpg'], ['COAST', 'assets/pano_coast.jpg'], ['SUNSET', 'assets/pano_sunset.jpg'], ['SNOW', 'assets/pano_snow.jpg'], ['ALPINE', 'assets/pano_alpine.jpg']]){
+for(const [psub, pfile] of [['MEADOW', 'assets/pano_rockies.jpg'], ['FOREST', 'assets/pano_rockies.jpg'], ['DESERT', 'assets/pano_desert.jpg'], ['SUNSET', 'assets/pano_sunset.jpg'], ['SNOW', 'assets/pano_snow.jpg'], ['ALPINE', 'assets/pano_alpine.jpg']]){
   new THREE.TextureLoader().load(pfile, t=>{
     t.encoding = THREE.sRGBEncoding;
     t.wrapS = THREE.MirroredRepeatWrapping; t.repeat.x = 2; t.anisotropy = 8;
@@ -224,7 +223,7 @@ for(const [psub, pfile] of [['MEADOW', 'assets/pano_rockies.jpg'], ['FOREST', 'a
 }
 /* 사진 지면 텍스처 (생성 이미지): 초원·숲의 가까운 지면을 사진 질감으로 */
 const groundTexs = {};
-for(const [gsub, gfile, grx, gry] of [['MEADOW', 'assets/ground_meadow.jpg', 10, 18], ['FOREST', 'assets/ground_forest.jpg', 8, 14], ['DESERT', 'assets/ground_desert.jpg', 8, 14], ['COAST', 'assets/ground_coast.jpg', 8, 14], ['SUNSET', 'assets/ground_sunset.jpg', 8, 14], ['SNOW', 'assets/ground_snow.jpg', 8, 14], ['ALPINE', 'assets/ground_alpine.jpg', 8, 14]]){
+for(const [gsub, gfile, grx, gry] of [['MEADOW', 'assets/ground_meadow.jpg', 10, 18], ['FOREST', 'assets/ground_forest.jpg', 8, 14], ['DESERT', 'assets/ground_desert.jpg', 8, 14], ['SUNSET', 'assets/ground_sunset.jpg', 8, 14], ['SNOW', 'assets/ground_snow.jpg', 8, 14], ['ALPINE', 'assets/ground_alpine.jpg', 8, 14]]){
   new THREE.TextureLoader().load(gfile, t=>{
     t.encoding = THREE.sRGBEncoding;
     t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping;
@@ -236,13 +235,17 @@ for(const [gsub, gfile, grx, gry] of [['MEADOW', 'assets/ground_meadow.jpg', 10,
 let bbTex = null, bbMat = null;
 const bbGeom = new THREE.PlaneGeometry(0.98, 2); bbGeom.translate(0, 1, 0);
 const BB_SET = new Map();
-let houseTex = null, houseMat = null;
-const houseGeom = new THREE.PlaneGeometry(2.98, 2); houseGeom.translate(0, 1, 0);
-new THREE.TextureLoader().load('assets/prop_house.png', t=>{
-  t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
-  houseMat = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 });
-  houseTex = t;
-}, undefined, ()=>{});
+let houseTex = null;
+const HOUSES = [];
+for(const hf of ['assets/prop_house.png','assets/prop_house2.png','assets/prop_house3.png','assets/prop_house4.png','assets/prop_house5.png','assets/prop_house6.png']){
+  new THREE.TextureLoader().load(hf, t=>{
+    t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
+    const gm = new THREE.PlaneGeometry(2 * t.image.width / t.image.height, 2); gm.translate(0, 1, 0);
+    HOUSES.push({ mat: new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 }), geom: gm });
+    if(typeof SHARED_GEO !== 'undefined') SHARED_GEO.add(gm);
+    houseTex = t;
+  }, undefined, ()=>{});
+}
 /* 밭 사진 질감: 단색 밭 평면을 실제 작물 사진으로 */
 new THREE.TextureLoader().load('assets/ground_field.jpg', t=>{
   t.encoding = THREE.sRGBEncoding; t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; t.anisotropy = 8;
@@ -546,7 +549,7 @@ const UMB_GEOMS = [umbrellaGeom(0xe2574c), umbrellaGeom(0x3e7dc4), umbrellaGeom(
 const GEOMS = { pine: pineGeom(false), pineSnow: pineGeom(true), round: roundGeom(), palm: palmGeom(), cactus: cactusGeom(), rock: rockGeom(), bush: bushGeom(),
   lighthouse: lighthouseGeom(), boat: boatGeom(), snowman: snowmanGeom(), bale: baleGeom(), signal: signalGeom(), lamp: lampGeom() };
 const poleGeomInst = poleGeom();
-const SHARED_GEO = new Set([...Object.values(GEOMS), poleGeomInst, ...UMB_GEOMS, bbGeom, houseGeom]);
+const SHARED_GEO = new Set([...Object.values(GEOMS), poleGeomInst, ...UMB_GEOMS, bbGeom]);
 const ridgeGeomInst = ridgeGeom();
 SHARED_GEO.add(ridgeGeomInst);
 const ridgeMat = new THREE.MeshStandardMaterial({ vertexColors:true, color:0x8fb98a, roughness:1, flatShading:true });
@@ -932,10 +935,9 @@ function buildChunk(ci){
   const nH = bName==='MEADOW'?2 : bName==='SNOW'?9 : bName==='NIGHT'?5 : bName==='SUNSET'?2 : bName==='COAST'?1 : 0;
   const vX = ci*CHUNK + 60 + rnd()*140, vSide = rnd()<0.5? -1: 1;
   let skipHouses3D = false;
-  if(houseTex && nH > 0){
+  if(houseTex && HOUSES.length && nH > 0){
     skipHouses3D = true;
-    const hb = new THREE.InstancedMesh(houseGeom, houseMat, nH);
-    const items = [];
+    const byVar = new Map();
     for(let i=0;i<nH;i++){
       let hx, side, hz;
       if(bName==='NIGHT' || bName==='SNOW'){ // 마을은 한곳에 모아서, 사진 집으로
@@ -947,11 +949,18 @@ function buildChunk(ci){
         side = rnd()<0.5? -1: 1;
         hz = latAt(hx) + side*(26 + rnd()*70);
       }
-      items.push({ x: hx, y: groundH(hx, hz) - 0.05, z: hz, h: 7 + rnd()*1.6, flip: rnd() < 0.5 });
+      const v = Math.floor(rnd()*HOUSES.length);
+      if(!byVar.has(v)) byVar.set(v, []);
+      byVar.get(v).push({ x: hx, y: groundH(hx, hz) - 0.05, z: hz, h: 7 + rnd()*1.6, flip: rnd() < 0.5 });
     }
-    hb.count = items.length; hb.frustumCulled = false;
-    group.add(hb);
-    const lst1 = BB_SET.get(ci) || []; lst1.push({ im: hb, items }); BB_SET.set(ci, lst1);
+    const lst1 = BB_SET.get(ci) || [];
+    for(const [v, its] of byVar){
+      const hb = new THREE.InstancedMesh(HOUSES[v].geom, HOUSES[v].mat, its.length);
+      hb.count = its.length; hb.frustumCulled = false;
+      group.add(hb);
+      lst1.push({ im: hb, items: its });
+    }
+    BB_SET.set(ci, lst1);
   }
   for(let i=0;i<(skipHouses3D? 0 : nH);i++){
     const clustered = bName==='SNOW' || bName==='NIGHT';
@@ -1027,21 +1036,6 @@ function buildChunk(ci){
     }
   }
 
-  // 사막: 메사 (평평한 바위산)
-  if(bName==='DESERT'){
-    const nMs = 1 + Math.floor(rnd()*2);
-    for(let i=0;i<nMs;i++){
-      const mx2 = ci*CHUNK + rnd()*CHUNK;
-      const mSide = rnd()<0.5? -1: 1;
-      const mz2 = latAt(mx2) + mSide*(120 + rnd()*110);
-      const mesa = new THREE.Mesh(new THREE.CylinderGeometry(13+rnd()*10, 19+rnd()*12, 15+rnd()*9, 7), mesaMat);
-      mesa.position.set(mx2, groundH(mx2,mz2)+4, mz2);
-      mesa.rotation.y = rnd()*Math.PI;
-      mesa.castShadow = true;
-      group.add(mesa);
-    }
-  }
-
   // 눈 마을·밤: 가로등
   if(bName==='SNOW' || bName==='NIGHT'){
     const nL = bName==='SNOW'? 5 : 3;
@@ -1087,24 +1081,6 @@ function buildChunk(ci){
     lake.scale.set(1.5, 1, 1);
     lake.position.set(kx, 0, kz);
     group.add(lake);
-  }
-
-  // 먼 산맥 (맵에 따라 다르게: 사막엔 없고, 산·설산엔 크고 가깝게)
-  const rangeP = (bName==='MOUNTAIN'||bName==='ALPINE')? 1 : bName==='DESERT'? 0 : bName==='MEADOW'? 0.35 : bName==='COAST'? 0.4 : bName==='FOREST'? 0.6 : 0.55;
-  if(rnd() < rangeP){
-    const nR = (bName==='MOUNTAIN'||bName==='ALPINE')? 2 : 1;
-    for(let i=0;i<nR;i++){
-      const rx = ci*CHUNK + rnd()*CHUNK;
-      let rSide = rnd()<0.5? -1: 1;
-      if(bName==='COAST') rSide = -1; // 바다는 육지 쪽에만
-      const rDist = bName==='ALPINE'? 200 + rnd()*90 : bName==='MOUNTAIN'? 250 + rnd()*100 : 300 + rnd()*130;
-      const ridge = new THREE.Mesh(ridgeGeomInst, ridgeMat);
-      const rs = bName==='ALPINE'? 1.4 + rnd()*0.7 : 1.0 + rnd()*0.6;
-      ridge.scale.set(rs, rs*(0.9 + rnd()*0.3), rs);
-      ridge.position.set(rx, -4, latAt(rx) + rSide*rDist);
-      ridge.rotation.y = (rnd()-0.5)*0.5;
-      group.add(ridge);
-    }
   }
 
   // 바다 (교량 구간은 물이 양쪽으로)
@@ -1520,6 +1496,7 @@ function placeTrain(){
 }
 
 /* ================= sky extras ================= */
+const dotTex = (()=>{ const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d'); const gr = g.createRadialGradient(32,32,0,32,32,32); gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.4,'rgba(255,255,255,0.85)'); gr.addColorStop(1,'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0,0,64,64); return new THREE.CanvasTexture(cv); })();
 const starGeo = new THREE.BufferGeometry();
 {
   const sp = [];
@@ -1531,7 +1508,7 @@ const starGeo = new THREE.BufferGeometry();
   }
   starGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(sp), 3));
 }
-const starMat = new THREE.PointsMaterial({ color:0xffffff, size:1.7, sizeAttenuation:false, transparent:true, opacity:0, fog:false, depthWrite:false });
+const starMat = new THREE.PointsMaterial({ color:0xffffff, size:1.7, sizeAttenuation:false, transparent:true, opacity:0, fog:false, depthWrite:false, map: dotTex, blending: THREE.AdditiveBlending });
 const stars = new THREE.Points(starGeo, starMat);
 scene.add(stars);
 const moonMat = new THREE.MeshBasicMaterial({ color:0xf4f7ff, transparent:true, opacity:0, fog:false, depthWrite:false });
@@ -1551,7 +1528,7 @@ function addStarLayer(count, size, color, seed){
     sp.push(r*Math.sin(e)*Math.cos(a), r*Math.cos(e)*0.6 + 60, r*Math.sin(e)*Math.sin(a));
   }
   g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(sp), 3));
-  const m = new THREE.PointsMaterial({ color, size, sizeAttenuation:false, transparent:true, opacity:0, fog:false, depthWrite:false });
+  const m = new THREE.PointsMaterial({ color, size, sizeAttenuation:false, transparent:true, opacity:0, fog:false, depthWrite:false, map: dotTex, blending: THREE.AdditiveBlending });
   const pts = new THREE.Points(g, m);
   pts.frustumCulled = false;
   scene.add(pts);
@@ -2151,13 +2128,14 @@ document.getElementById('camBtn').addEventListener('click', e=>{
   e.target.textContent = "카메라: " + CAMS[camMode];
 });
 /* 맵 선택 버튼 */
-const MAP_LABELS = ["초원", "숲", "바다", "사막", "노을", "눈 마을", "설산", "밤"];
+const MAP_LABELS = ["초원", "숲", "사막", "노을", "눈 마을", "설산", "밤"];
 const mapChips = [];
 let realChip = null;
 {
   const bar = document.getElementById('mapbar');
   const rb = document.createElement('button');
   rb.textContent = '실제 노선';
+  rb.style.display = 'none'; // 실제 노선 뷰는 일단 숨김 (사용자 요청 2026-10-23)
   rb.addEventListener('click', ()=>{
     if(REAL.ready) setMode('real');
     else announce({ name:'실제 노선 데이터를 받는 중이에요', sub:'LOADING' });
