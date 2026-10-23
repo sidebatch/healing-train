@@ -4,3 +4,5 @@
 - prop_house.png: AI-generated log cabin photo (white background), same keying pipeline, 640 wide. Billboard houses in MEADOW.
 - prop_palm.png: AI-generated coconut palm photo (white bg), keyed with the same whiteness/saturation pipeline as the pine (2026-10-21). Deployed 512x1065. Used as billboards in the COAST (해변) biome; replaces 3D palms there.
 - ground_coast.jpg v2: regenerated cleaner — mostly clean pale sand, sparse specks only (v1's grass tufts + green vertex colors read as swamp; COAST palette ground colors also changed green -> pale sand in SW v15).
+- prop_cactus.png: AI-generated saguaro cactus photo (white bg), keyed with border flood-fill whiteness keying + defringe (2026-10-23), deployed 512 wide. Billboard cacti in DESERT; replaces 3D cactusGeom there.
+- prop_pine_snow.png: AI-generated snow-covered pine photo (white bg), same flood-fill keying (2026-10-23), deployed 512 wide. Billboard snow pines in SNOW/ALPINE; replaces 3D pineSnow there. Note: a few soft white patches remain inside the canopy where the studio background was fully enclosed by branches — they read as snow clumps in-scene; flagged for the user's phone verdict.

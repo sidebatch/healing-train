@@ -204,14 +204,14 @@ if(THREE.RGBELoader){
 }
 /* 사진 파노라마 배경 (생성 이미지): 바이옴별 배경 전체를 사진으로 */
 const panoTexs = {};
-const PANO_BG = { MEADOW: 0x9db9dc, FOREST: 0x9db9dc, DESERT: 0xf0b183, COAST: 0xa8d4ea };
+const PANO_BG = { MEADOW: 0x9db9dc, FOREST: 0x9db9dc, DESERT: 0xf0b183, COAST: 0xa8d4ea, SUNSET: 0xf2a56b, SNOW: 0xcfdde8, ALPINE: 0xd7e6f2 };
 const panoMesh = new THREE.Mesh(
   new THREE.CylinderGeometry(1700, 1700, 1500, 40, 1, true),
   new THREE.MeshBasicMaterial({ side: THREE.BackSide, fog: false, depthWrite: false })
 );
 panoMesh.visible = false; panoMesh.frustumCulled = false; panoMesh.renderOrder = -10;
 scene.add(panoMesh);
-for(const [psub, pfile] of [['MEADOW', 'assets/pano_rockies.jpg'], ['FOREST', 'assets/pano_rockies.jpg'], ['DESERT', 'assets/pano_desert.jpg'], ['COAST', 'assets/pano_coast.jpg']]){
+for(const [psub, pfile] of [['MEADOW', 'assets/pano_rockies.jpg'], ['FOREST', 'assets/pano_rockies.jpg'], ['DESERT', 'assets/pano_desert.jpg'], ['COAST', 'assets/pano_coast.jpg'], ['SUNSET', 'assets/pano_sunset.jpg'], ['SNOW', 'assets/pano_snow.jpg'], ['ALPINE', 'assets/pano_alpine.jpg']]){
   new THREE.TextureLoader().load(pfile, t=>{
     t.encoding = THREE.sRGBEncoding;
     t.wrapS = THREE.MirroredRepeatWrapping; t.repeat.x = 2; t.anisotropy = 8;
@@ -220,7 +220,7 @@ for(const [psub, pfile] of [['MEADOW', 'assets/pano_rockies.jpg'], ['FOREST', 'a
 }
 /* 사진 지면 텍스처 (생성 이미지): 초원·숲의 가까운 지면을 사진 질감으로 */
 const groundTexs = {};
-for(const [gsub, gfile, grx, gry] of [['MEADOW', 'assets/ground_meadow.jpg', 10, 18], ['FOREST', 'assets/ground_forest.jpg', 8, 14], ['DESERT', 'assets/ground_desert.jpg', 8, 14], ['COAST', 'assets/ground_coast.jpg', 8, 14]]){
+for(const [gsub, gfile, grx, gry] of [['MEADOW', 'assets/ground_meadow.jpg', 10, 18], ['FOREST', 'assets/ground_forest.jpg', 8, 14], ['DESERT', 'assets/ground_desert.jpg', 8, 14], ['COAST', 'assets/ground_coast.jpg', 8, 14], ['SUNSET', 'assets/ground_sunset.jpg', 8, 14], ['SNOW', 'assets/ground_snow.jpg', 8, 14], ['ALPINE', 'assets/ground_alpine.jpg', 8, 14]]){
   new THREE.TextureLoader().load(gfile, t=>{
     t.encoding = THREE.sRGBEncoding;
     t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping;
@@ -258,6 +258,20 @@ new THREE.TextureLoader().load('assets/prop_palm.png', t=>{
   t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
   palmMat = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 });
   palmTex = t;
+}, undefined, ()=>{});
+let cactusTex = null, cactusMat = null, cactusGeomBB = null;
+new THREE.TextureLoader().load('assets/prop_cactus.png', t=>{
+  t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
+  cactusMat = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 });
+  cactusTex = t;
+  cactusGeomBB = new THREE.PlaneGeometry(2 * t.image.width / t.image.height, 2); cactusGeomBB.translate(0, 1, 0);
+}, undefined, ()=>{});
+let pineSnowTex = null, pineSnowMat = null, pineSnowGeomBB = null;
+new THREE.TextureLoader().load('assets/prop_pine_snow.png', t=>{
+  t.encoding = THREE.sRGBEncoding; t.anisotropy = 8;
+  pineSnowMat = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 1 });
+  pineSnowTex = t;
+  pineSnowGeomBB = new THREE.PlaneGeometry(2 * t.image.width / t.image.height, 2); pineSnowGeomBB.translate(0, 1, 0);
 }, undefined, ()=>{});
 const _skyTop = new THREE.Color(), _skyBot = new THREE.Color(), _white = new THREE.Color(0xffffff), _black = new THREE.Color(0x000000);
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 2400);
@@ -764,6 +778,8 @@ function buildChunk(ci){
   else if(bName==='NIGHT'){ plan.pine=36; plan.round=6; }
   if(bbTex && (bName==='MEADOW' || bName==='FOREST')){ plan.pine = 0; plan.round = 0; }
   if(palmTex && bName==='COAST'){ plan.palm = 0; }
+  if(cactusTex && bName==='DESERT'){ plan.cactus = 0; }
+  if(pineSnowTex && (bName==='SNOW' || bName==='ALPINE')){ plan.pineSnow = 0; }
   for(const type of Object.keys(plan)){
     const cnt = plan[type];
     if(!cnt) continue;
@@ -838,6 +854,44 @@ function buildChunk(ci){
     pb.count = placed; pb.frustumCulled = false;
     group.add(pb);
     const lst2 = BB_SET.get(ci) || []; lst2.push({ im: pb, items }); BB_SET.set(ci, lst2);
+  }
+
+  // 사진 선인장 빌보드 (사막): 3D 선인장 대신 실사 선인장
+  if(cactusTex && cactusGeomBB && bName==='DESERT'){
+    const nCB = 24;
+    const cb = new THREE.InstancedMesh(cactusGeomBB, cactusMat, nCB);
+    const items = [];
+    let placed = 0, guard = 0;
+    while(placed < nCB && guard++ < nCB*30){
+      const x = ci*CHUNK + rnd()*CHUNK;
+      const side = rnd()<0.5? -1: 1;
+      const dist = 13 + Math.pow(rnd(), 1.5)*150;
+      const z = latAt(x) + side*dist;
+      items.push({ x, y: groundH(x, z) - 0.1, z, h: 3.4 + rnd()*2.0 });
+      placed++;
+    }
+    cb.count = placed; cb.frustumCulled = false;
+    group.add(cb);
+    const lst3 = BB_SET.get(ci) || []; lst3.push({ im: cb, items }); BB_SET.set(ci, lst3);
+  }
+
+  // 사진 눈소나무 빌보드 (눈 마을·설산): 3D 눈소나무 대신 실사 눈소나무
+  if(pineSnowTex && pineSnowGeomBB && (bName==='SNOW' || bName==='ALPINE')){
+    const nSB = bName==='SNOW' ? 40 : 24;
+    const sb = new THREE.InstancedMesh(pineSnowGeomBB, pineSnowMat, nSB);
+    const items = [];
+    let placed = 0, guard = 0;
+    while(placed < nSB && guard++ < nSB*30){
+      const x = ci*CHUNK + rnd()*CHUNK;
+      const side = rnd()<0.5? -1: 1;
+      const dist = placed % 3 === 0 ? 13 + rnd()*13 : 26 + Math.pow(rnd(), 1.4)*110;
+      const z = latAt(x) + side*dist;
+      items.push({ x, y: groundH(x, z) - 0.1, z, h: 7.0 + rnd()*4.0 });
+      placed++;
+    }
+    sb.count = placed; sb.frustumCulled = false;
+    group.add(sb);
+    const lst4 = BB_SET.get(ci) || []; lst4.push({ im: sb, items }); BB_SET.set(ci, lst4);
   }
 
   // 집 (눈 마을·밤에는 마을처럼 모여서)
