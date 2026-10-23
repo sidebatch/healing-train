@@ -778,6 +778,7 @@ function buildChunk(ci){
   else if(bName==='NIGHT'){ plan.pine=36; plan.round=6; }
   if(bbTex && (bName==='MEADOW' || bName==='FOREST')){ plan.pine = 0; plan.round = 0; }
   if(palmTex && bName==='COAST'){ plan.palm = 0; }
+  if(bbTex && bName==='NIGHT'){ plan.pine = 0; plan.round = 0; }
   if(cactusTex && bName==='DESERT'){ plan.cactus = 0; }
   if(pineSnowTex && (bName==='SNOW' || bName==='ALPINE')){ plan.pineSnow = 0; }
   for(const type of Object.keys(plan)){
@@ -817,8 +818,8 @@ function buildChunk(ci){
   _dummy.rotation.set(0,0,0); _dummy.scale.set(1,1,1);
 
   // 사진 나무 빌보드 배치 (초원·숲): 매 프레임 카메라 쪽으로 돌아섬
-  if(bbTex && (bName==='MEADOW' || bName==='FOREST')){
-    const nBB = bName==='FOREST' ? 26 : 14;
+  if(bbTex && (bName==='MEADOW' || bName==='FOREST' || bName==='NIGHT')){
+    const nBB = bName==='FOREST' ? 26 : bName==='NIGHT' ? 20 : 14;
     const bb = new THREE.InstancedMesh(bbGeom, bbMat, nBB);
     const items = [];
     let placed = 0, guard = 0;
@@ -898,14 +899,21 @@ function buildChunk(ci){
   const nH = bName==='MEADOW'?2 : bName==='SNOW'?9 : bName==='NIGHT'?5 : bName==='SUNSET'?2 : bName==='COAST'?1 : 0;
   const vX = ci*CHUNK + 60 + rnd()*140, vSide = rnd()<0.5? -1: 1;
   let skipHouses3D = false;
-  if(houseTex && bName==='MEADOW' && nH > 0){
+  if(houseTex && (bName==='MEADOW' || bName==='NIGHT') && nH > 0){
     skipHouses3D = true;
     const hb = new THREE.InstancedMesh(houseGeom, houseMat, nH);
     const items = [];
     for(let i=0;i<nH;i++){
-      const hx = ci*CHUNK + 30 + rnd()*(CHUNK-60);
-      const side = rnd()<0.5? -1: 1;
-      const hz = latAt(hx) + side*(26 + rnd()*70);
+      let hx, side, hz;
+      if(bName==='NIGHT'){ // 밤 마을은 3D 집처럼 한곳에 모아서, 사진 집으로
+        hx = vX + (i - (nH-1)/2)*13 + (rnd()-0.5)*5;
+        side = vSide;
+        hz = latAt(hx) + side*(23 + (i%2)*13 + rnd()*5);
+      } else {
+        hx = ci*CHUNK + 30 + rnd()*(CHUNK-60);
+        side = rnd()<0.5? -1: 1;
+        hz = latAt(hx) + side*(26 + rnd()*70);
+      }
       items.push({ x: hx, y: groundH(hx, hz) - 0.05, z: hz, h: 7 + rnd()*1.6, flip: rnd() < 0.5 });
     }
     hb.count = items.length; hb.frustumCulled = false;
@@ -1515,6 +1523,131 @@ const moon = new THREE.Mesh(new THREE.CircleGeometry(55, 24), moonMat);
 moon.frustumCulled = false;
 scene.add(moon);
 const _moonDir = new THREE.Vector3(420, 330, -1150);
+/* 밤하늘 강화: 밝은 별 층 + 은하수 띠 + 별똥별 (사용자 요청 2026-10-23) */
+const starLayers = [stars];
+function addStarLayer(count, size, color, seed){
+  const g = new THREE.BufferGeometry();
+  const sp = [];
+  srand(seed);
+  for(let i=0;i<count;i++){
+    const a = rnd()*Math.PI*2, e = Math.acos(rnd()*0.95);
+    const r = 1000;
+    sp.push(r*Math.sin(e)*Math.cos(a), r*Math.cos(e)*0.6 + 60, r*Math.sin(e)*Math.sin(a));
+  }
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(sp), 3));
+  const m = new THREE.PointsMaterial({ color, size, sizeAttenuation:false, transparent:true, opacity:0, fog:false, depthWrite:false });
+  const pts = new THREE.Points(g, m);
+  pts.frustumCulled = false;
+  scene.add(pts);
+  starLayers.push(pts);
+  return m;
+}
+const starMat2 = addStarLayer(260, 2.6, 0xdfe8ff, 777);
+const starMat3 = addStarLayer(70, 3.6, 0xfff3d6, 4242);
+/* 은하수: 캔버스에 띠를 그려 구 안쪽에 두른다 */
+const mwTex = (()=>{
+  const cv = document.createElement('canvas'); cv.width = 2048; cv.height = 1024;
+  const g = cv.getContext('2d');
+  const bandY = x => 430 + Math.sin((x/2048)*Math.PI*2*1 + 0.7) * 110;
+  g.globalCompositeOperation = 'lighter';
+  for(let x=0;x<2048;x+=16){
+    const y = bandY(x);
+    const gr = g.createRadialGradient(x, y, 0, x, y, 120);
+    gr.addColorStop(0, 'rgba(165,185,235,0.055)');
+    gr.addColorStop(1, 'rgba(165,185,235,0)');
+    g.fillStyle = gr;
+    g.fillRect(x-120, y-120, 240, 240);
+  }
+  for(let x=0;x<2048;x+=16){
+    const y = bandY(x);
+    const gr = g.createRadialGradient(x, y, 0, x, y, 52);
+    gr.addColorStop(0, 'rgba(255,242,220,0.05)');
+    gr.addColorStop(1, 'rgba(255,242,220,0)');
+    g.fillStyle = gr;
+    g.fillRect(x-52, y-52, 104, 104);
+  }
+  const gauss = () => (Math.random()+Math.random()+Math.random()-1.5)/1.5;
+  for(let i=0;i<5200;i++){
+    const x = Math.random()*2048;
+    const y = bandY(x) + gauss()*95;
+    if(y < -20 || y > 1044) continue;
+    const r = Math.random()*1.5 + 0.4;
+    const warm = Math.random() < 0.3;
+    g.fillStyle = warm ? 'rgba(255,240,214,' + (0.25+Math.random()*0.6) + ')' : 'rgba(225,235,255,' + (0.25+Math.random()*0.6) + ')';
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI*2); g.fill();
+  }
+  for(let i=0;i<1600;i++){
+    const x = Math.random()*2048, y = Math.random()*1024;
+    g.fillStyle = 'rgba(255,255,255,' + (0.10+Math.random()*0.30) + ')';
+    g.beginPath(); g.arc(x, y, Math.random()*1.1 + 0.3, 0, Math.PI*2); g.fill();
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.encoding = THREE.sRGBEncoding;
+  return t;
+})();
+const mwMat = new THREE.MeshBasicMaterial({ map: mwTex, side: THREE.BackSide, transparent:true, opacity:0, fog:false, depthWrite:false });
+const mwSphere = new THREE.Mesh(new THREE.SphereGeometry(1450, 32, 16), mwMat);
+mwSphere.frustumCulled = false; mwSphere.renderOrder = -9;
+mwSphere.rotation.set(0.12, 0.8, 0.18);
+scene.add(mwSphere);
+/* 별똥별 */
+const meteorTex = (()=>{
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 32;
+  const g = cv.getContext('2d');
+  const gr = g.createLinearGradient(0, 0, 256, 0);
+  gr.addColorStop(0, 'rgba(255,255,255,0)');
+  gr.addColorStop(0.55, 'rgba(190,210,255,0.28)');
+  gr.addColorStop(0.85, 'rgba(255,255,255,0.85)');
+  gr.addColorStop(0.96, 'rgba(255,255,255,1)');
+  gr.addColorStop(1, 'rgba(255,255,255,0.9)');
+  g.fillStyle = gr; g.fillRect(0, 0, 256, 32);
+  g.globalCompositeOperation = 'destination-in';
+  const gv = g.createLinearGradient(0, 0, 0, 32);
+  gv.addColorStop(0, 'rgba(0,0,0,0)');
+  gv.addColorStop(0.5, 'rgba(0,0,0,1)');
+  gv.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gv; g.fillRect(0, 0, 256, 32);
+  return new THREE.CanvasTexture(cv);
+})();
+const meteors = [];
+for(let i=0;i<3;i++){
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(56, 1.5),
+    new THREE.MeshBasicMaterial({ map: meteorTex, transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false, fog:false, side:THREE.DoubleSide })
+  );
+  mesh.visible = false; mesh.frustumCulled = false; mesh.renderOrder = 6;
+  scene.add(mesh);
+  meteors.push({ mesh, t: 1e9, dur: 1, from: new THREE.Vector3(), dir: new THREE.Vector3() });
+}
+let meteorTimer = 1.4;
+const _mr = new THREE.Vector3(), _mu = new THREE.Vector3();
+function updateMeteors(dt, night){
+  if(night < 0.5){ for(const mt of meteors){ mt.mesh.visible = false; mt.t = 1e9; } meteorTimer = 1.4; return; }
+  meteorTimer -= dt;
+  if(meteorTimer <= 0){
+    const mt = meteors.find(x => x.t >= x.dur);
+    if(mt){
+      const az = Math.random()*Math.PI*2;
+      mt.from.set(Math.cos(az)*720, 460 + Math.random()*280, Math.sin(az)*720);
+      const side = Math.random() < 0.5 ? -1 : 1;
+      mt.dir.set(side*(0.55 + Math.random()*0.3), -(0.36 + Math.random()*0.22), (Math.random()-0.5)*0.3).normalize();
+      mt.t = 0; mt.dur = 0.75 + Math.random()*0.4;
+      mt.mesh.visible = true;
+    }
+    meteorTimer = 4 + Math.random()*5;
+  }
+  for(const mt of meteors){
+    if(mt.t >= mt.dur){ mt.mesh.visible = false; continue; }
+    mt.t += dt;
+    const k = Math.min(mt.t / mt.dur, 1);
+    mt.mesh.position.copy(camera.position).add(mt.from).addScaledVector(mt.dir, k*470);
+    mt.mesh.lookAt(camera.position);
+    _mr.setFromMatrixColumn(camera.matrix, 0);
+    _mu.setFromMatrixColumn(camera.matrix, 1);
+    mt.mesh.rotateZ(Math.atan2(mt.dir.dot(_mu), mt.dir.dot(_mr)));
+    mt.mesh.material.opacity = Math.sin(Math.PI * k) * 0.95;
+  }
+}
 const cloudMat = new THREE.MeshStandardMaterial({ color:0xffffff, roughness:1, transparent:true, opacity:0.88 });
 const cloudGroup = new THREE.Group();
 {
@@ -2229,6 +2362,12 @@ function frame(now){
   snowMat.opacity = pal.snow * 0.95;
   if(pal.snow > 0.02) updateSnow(dt, now/1000);
   stars.position.copy(camera.position);
+  for(const sl of starLayers) sl.position.copy(camera.position);
+  starMat2.opacity = pal.night * 0.9;
+  starMat3.opacity = pal.night * (0.82 + 0.18*Math.sin(now*0.004));
+  mwSphere.position.copy(camera.position);
+  mwMat.opacity = pal.night * 0.92;
+  updateMeteors(dt, pal.night);
   _wc.copy(winDay).lerp(winNight, pal.night);
   winMat.color.copy(_wc); houseWinMat.color.copy(_wc); lampMat.color.copy(_wc);
   if(headlight) headlight.intensity = pal.night * 2.4;
